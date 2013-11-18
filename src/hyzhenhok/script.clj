@@ -213,7 +213,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(ann ctrl-item? [ScriptItem -> (Option Keyword)])
+(ann ctrl-item? [ScriptItem -> (Nilable Keyword)])
 (defn ctrl-item?
   "Returns true if this item can manipulate the ctrl stack.
    - This is how we distingush functions that should always be
@@ -222,7 +222,7 @@
    - Any items that aren't ctrl-items are not executed if
      (execute-item? ctrl) returns false."
   [item]
-  (item #{:op-if :op-notif :op-else :op-endif}))
+  (some #{:op-if :op-notif :op-else :op-endif} [item]))
 
 (ann execute-item? [ScriptStack -> Boolean])
 (defn execute-item?
