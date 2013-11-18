@@ -1,0 +1,186 @@
+[
+ ;; Block
+ ;;
+ ;; - :block/hash       one String
+ ;; - :block/ver        one Long
+ ;; - :block/prevBlock  one Ref
+ ;; - :block/merkleRoot one String
+ ;; - :block/time       one Instant
+ ;; - :block/bits       one String (Hex)
+ ;; - :block/nonce      one Long
+ ;; - :block/txns       one Ref
+
+ ;; :block/hash one String
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block hash."
+  :db/unique      :db.unique/value
+  :db/ident       :block/hash
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one}
+ ;; :block/ver one Long
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block version."
+  :db/ident       :block/ver
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :block/prevBlock one Ref
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Previous block."
+  :db/ident       :block/prevBlock
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/one}
+ ;; :block/merkleRoot one String
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block merkle root."
+  :db/ident       :block/merkleRoot
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one}
+ ;; :block/time one Instant
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block timestamp."
+  :db/ident       :block/time
+  :db/valueType   :db.type/instant
+  :db/cardinality :db.cardinality/one}
+ ;; :block/bits one String
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block target difficulty bits (compact hex)."
+  :db/ident       :block/bits
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one}
+ ;; :block/nonce one Long
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block nonce."
+  :db/ident       :block/nonce
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :block/txns many Refs
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block txns."
+  :db/ident       :block/txns
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/many}
+
+ ;; Txn
+ ;;
+ ;; - :txn/hash     one String (unique value)
+ ;; - :txn/idx      one Long
+ ;; - :txn/ver      one Long
+ ;; - :txn/lockTime one Long
+ ;; - :txn/txIns    many Refs
+ ;; - :txn/txOuts   many Refs
+
+ ;; :txn/hash (one unique-value string)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Txn hash."
+  :db/unique      :db.unique/value
+  :db/ident       :txn/hash
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one}
+ ;; :txn/idx (one long)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Txn idx (within block)."
+  :db/ident       :txn/idx
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :txn/ver (one long)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Txn version."
+  :db/ident       :txn/ver
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :txn/lockTime (one long)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Txn lock time."
+  :db/ident       :txn/lockTime
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :txn/txIns (many refs)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Txn inputs."
+  :db/ident       :txn/txIns
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/many}
+ ;; :txn/txOuts (many refs)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Txn outputs."
+  :db/ident       :txn/txOuts
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/many}
+
+ ;; TxIn
+ ;;
+ ;; - :txIn/idx       one Long
+ ;; - :txIn/script    one String
+ ;; - :txIn/sequence  one Long
+ ;; - :txIn/prevTxOut one Ref (derived from txn-hash & txout-idx)
+
+ ;; :txIn/idx (one Long)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "TxIn idx (within block)."
+  :db/ident       :txIn/idx
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :txIn/script (one String)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "TxIn signature script."
+  :db/ident       :txIn/script
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one}
+ ;; :txIn/sequence (one Long)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "TxIn sequence."
+  :db/ident       :txIn/sequence
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :txIn/prevTxOut
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "A ref to the TxOut this txIn points to."
+  :db/ident       :txIn/prevTxOut
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/one}
+
+ ;; TxOut (txOut/_txOuts -> Txn)
+ ;;
+ ;; - :txOut/idx    one Long
+ ;; - :txOut/value  one Long
+ ;; - :txOut/script one String
+
+ ;; :txOut/idx (one Long)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "TxOut idx (within block)."
+  :db/ident       :txOut/idx
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :txOut/value (one Long)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "TxOut Satoshi value."
+  :db/ident       :txOut/value
+  :db/valueType   :db.type/long
+  :db/cardinality :db.cardinality/one}
+ ;; :txOut/script (one String)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "TxOut pubkey script."
+  :db/ident       :txOut/script
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one}]
