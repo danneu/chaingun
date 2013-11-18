@@ -85,7 +85,7 @@ Launch the local blockchain explorer:
     $ java -jar hyzhenhok-standalone.jar explorer
     Launching database explorer at http://localhost:3000/...
 
-You should now be able to open http://localhost:3000/ in your browser and browse the first 100 blocks of the Bitcoin network.
+You should now be able to open [http://localhost:3000/](http://localhost:3000/) in your browser and browse the first 100 blocks of the Bitcoin network.
 
 ## Screenshots
 
