@@ -31,25 +31,19 @@
   gloss.io/encode [CompiledFrame Any -> ByteBuffer])
 (ann encode [CompiledFrame Any -> ByteBuffer])
 
-(def
-  ^{:doc "Encodes maps/values into ByteBuffers to be
-          sent over the network.
-
-          Ex:
-          (encode <codec> <value>)"}
-  encode
+(def encode
+  "Encodes maps/values into ByteBuffers to be
+  sent over the network.
+  Ex: (encode <codec> <value>)"
   gloss.io/encode)
 
 (ann ^:no-check
   gloss.io/decode [CompiledFrame (Seqable ByteBuffer) -> Any])
 (ann decode [CompiledFrame (Seqable ByteBuffer)
              -> Any])
-(def
-  ^{:doc "Decodes ByteBuffers into maps/values.
-
-           Ex:
-           (decode <codec> <byte buffers>)"}
-  decode
+(def decode
+  "Decodes ByteBuffers into maps/values.
+   Ex: (decode <codec> <byte buffers>)"
   gloss.io/decode)
 
 

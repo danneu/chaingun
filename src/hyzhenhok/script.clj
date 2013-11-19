@@ -260,9 +260,8 @@
 (defmulti execute-item (fn [item state] item))
 
 ;; default
-(defmethod ^{:doc "It's data rather than an opcode, so push the
-                   bytes onto stack."}
-  execute-item :default [bytes [main alt ctrl]]
+(defmethod execute-item :default [bytes [main alt ctrl]]
+  ;; It's data rather than an opcode, so push the bytes onto stack.
   [(conj main bytes) alt ctrl])
 
 ;; 0
@@ -354,10 +353,8 @@
   [(conj main (peek alt)) (rest alt) ctrl])
 
 ;; 109
-(defmethod ^{:doc "Removes top two stack values."}
-  execute-item
-  :op-2drop
-  [_ [main alt ctrl :as state]]
+(defmethod execute-item :op-2drop [_ [main alt ctrl :as state]]
+  ;; Removes top two stack values.
   [(drop 2 main) alt ctrl])
 
 ;; 110
@@ -371,47 +368,35 @@
   [(concat (list a b c) main) alt ctrl])
 
 ;; 112
-(defmethod ^{:doc "Copies 3rd and 4th items to top of stack."}
-  execute-item
-  :op-2over
-  [_ [[_ _ c d & main] alt ctrl]]
+(defmethod execute-item :op-2over [_ [[_ _ c d & main] alt ctrl]]
+  ;; Copies 3rd and 4th items to top of stack.
   [(concat (list c d) main) alt ctrl])
 
 ;; 113
-(defmethod ^{:doc "5th and 6th values are moved to top."}
-  execute-item
-  :op-2rot
-  [_ [[a b c d e f & main] alt ctrl]]
+(defmethod execute-item :op-2rot [_ [[a b c d e f & main] alt ctrl]]
+  ;; 5th and 6th values are moved to top.
   [(concat (list e f a b c d) main) alt ctrl])
 
 ;; 114
-(defmethod ^{:doc "Swaps the first pair with the second pair."}
-  execute-item
-  :op-2swap
-  [_ [[a b c d & main] alt ctrl]]
+(defmethod execute-item :op-2swap [_ [[a b c d & main] alt ctrl]]
+  ;; Swaps the first pair with the second pair.
   [(concat (list c d a b) main) alt ctrl])
 
 ;; 115
-(defmethod ^{:doc "If top stack value is true, duplicate it."}
-  execute-item
-  :op-ifdup
-  [_ [main alt ctrl :as state]]
+(defmethod execute-item :op-ifdup [_ [main alt ctrl :as state]]
+  ;; If top stack value is true, duplicate it.
   (if (stack-true? main)
     (execute-item :op-dup state)
     state))
 
 ;; 116
-(defmethod ^{:doc "Pushes stack-size onto stack."}
-  execute-item
-  :op-depth
-  [_ [main alt ctrl]]
+(defmethod execute-item :op-depth [_ [main alt ctrl]]
+  ;; Pushes stack-size onto stack.
   [(conj main (count main)) alt ctrl])
 
 ;; 117
-(defmethod ^{:doc "Removes top stack value."}
-  execute-item
-  :op-drop
-  [_ [main alt ctrl :as state]]
+(defmethod execute-item :op-drop [_ [main alt ctrl :as state]]
+  ;; Removes top stack value.
   [(drop 1 main) alt ctrl])
 
 ;; 118
@@ -419,56 +404,40 @@
   [(conj main (peek main)) alt ctrl])
 
 ;; 119
-(defmethod ^{:doc "Removes second-to-top stack value."}
-  execute-item
-  :op-nip
-  [_ [[a & main] alt ctrl]]
+(defmethod execute-item :op-nip [_ [[a & main] alt ctrl]]
+  ;; Removes second-to-top stack value.
   [(conj (rest main) a) alt ctrl])
 
 ;; 120
-(defmethod ^{:doc "Copies second-to-top stack value to the top."}
-  execute-item
-  :op-over
-  [_ [[_ b & _ :as main] alt ctrl]]
+(defmethod execute-item :op-over [_ [[_ b & _ :as main] alt ctrl]]
+  ;; Copies second-to-top stack value to the top.
   [(conj main b) alt ctrl])
 
 ;; 121
-(defmethod
-  ^{:doc "Value at idx `n` is copied to the top."}
-  execute-item
-  :op-pick
-  [_ [[n & rest] alt ctrl]]
+(defmethod execute-item :op-pick [_ [[n & rest] alt ctrl]]
+  ;; Value at idx `n` is copied to the top.
   [(conj rest (nth rest n)) alt ctrl])
 
 ;; 122
-(defmethod
-  ^{:doc "Value at idx `n` is moved to the top."}
-  execute-item
-  :op-roll
-  [_ [[n & main] alt ctrl]]
+(defmethod execute-item :op-roll [_ [[n & main] alt ctrl]]
+  ;; Value at idx `n` is moved to the top.
   (let [main' (concat (take n main)
                       (drop (inc n) main))]
     [(conj main' (nth main n)) alt ctrl]))
 
 ;; 123
-(defmethod ^{:doc "Top three values are rotated to the left."}
-  execute-item
-  :op-rot
-  [_ [[a b c & main] alt ctrl]]
+(defmethod execute-item :op-rot [_ [[a b c & main] alt ctrl]]
+  ;; Top three values are rotated to the left.
   [(concat (list b c a) main) alt ctrl])
 
 ;; 124
-(defmethod ^{:doc "Top two values are swapped."}
-  execute-item
-  :op-swap
-  [_ [[a b & main] alt ctrl]]
+(defmethod execute-item :op-swap [_ [[a b & main] alt ctrl]]
+  ;; Top two values are swapped.
   [(concat (list b a) main) alt ctrl])
 
 ;; 125
-(defmethod ^{:doc "Top stack value copied behind second-to-top."}
-  execute-item
-  :op-tuck
-  [_ [[a b & main] alt ctrl]]
+(defmethod execute-item :op-tuck [_ [[a b & main] alt ctrl]]
+  ;; Top stack value copied behind second-to-top.
   [(concat (list a b a) main) alt ctrl])
 
 ;; Crypto ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
