@@ -181,29 +181,39 @@
   ;; ===== Conventional txn =====
 
   ;:op-dup :op-hash160 "pubkeyhash" :op-equalverify :op-checksig
-  [(list (hex->bytes "aabbcc")) '() '()]
+
+  [(list (hex->bytes "aabbcc")
+         (hex->bytes "001122")) '() '()]
   [:op-dup :op-hash160]
-  [(list "0bfbcadae145d870428db173412d2d860b9acf5e" "aabbcc")
+  [(list "0bfbcadae145d870428db173412d2d860b9acf5e"
+         "aabbcc"
+         "001122")
    '() '()]
 
   ;; Pre-state
-  [(list (hex->bytes "aabbcc")) '() '()]
+  [(list (hex->bytes "aabbcc")
+         (hex->bytes "001122")) '() '()]
   ;; Script
-  [:op-dup :op-hash160
+  [:op-dup
+   :op-hash160
    "0bfbcadae145d870428db173412d2d860b9acf5e" ]
   ;; Post-state
   [(list "0bfbcadae145d870428db173412d2d860b9acf5e"
          "0bfbcadae145d870428db173412d2d860b9acf5e"
-         "aabbcc") '() '()]
+         "aabbcc"
+         "001122") '() '()]
 
   ;; Pre-state
-  [(list (hex->bytes "aabbcc")) '() '()]
+  [(list (hex->bytes "aabbcc")
+         (hex->bytes "001122")) '() '()]
   ;; Script
-  [:op-dup :op-hash160
+  [:op-dup
+   :op-hash160
    (hex->bytes "0bfbcadae145d870428db173412d2d860b9acf5e")
    :op-equalverify]
   ;; Post-state
-  [(list "aabbcc") '() '()]
+  [(list "aabbcc"
+         "001122") '() '()]
 
   )
 
