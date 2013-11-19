@@ -65,13 +65,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (given [pre-state script post-state]
-    (expect post-state
+    (expect (prettify-output2 post-state)
       ;; TODO: Make a better error-handling system during
       ;;       script parse/execute.
-      (try (execute script pre-state)
+      (try (prettify-output2
+            (execute script pre-state))
            (catch clojure.lang.ExceptionInfo _
            :threw)))
 
+  ;; default
+  ['() '() '()] ["someconstant"] ['("someconstant") '() '()]
 
   ;; 0 :op-false
   ['() '() '()] [:op-false] ['(0) '() '()]
@@ -161,6 +164,46 @@
   ['(:a :b :c) '() '()] [:op-rot] ['(:b :c :a) '() '()]
   ;; 125 :op-tuck
   ['(:a :b :c) '() '()] [:op-tuck] ['(:a :b :a :c) '() '()]
+
+  ;; 135 :op-equal
+  ['(:a :a) '() '()] [:op-equal] ['(1) '() '()]
+  ['(:a :b) '() '()] [:op-equal] ['(0) '() '()]
+  ;; 136 :op-equalverify
+  ['(:a :a) '() '()] [:op-equalverify] ['() '() '()]
+  ['(:a :b) '() '()] [:op-equalverify] [:invalid '() '()]
+
+  ;; 169 :op-hash160
+  [(list (hex->bytes "aabbcc")) '() '()]
+  [:op-hash160]
+  [(list "0bfbcadae145d870428db173412d2d860b9acf5e") '() '()]
+
+  ;; TODO: Move compound tests to its own test block.
+  ;; ===== Conventional txn =====
+
+  ;:op-dup :op-hash160 "pubkeyhash" :op-equalverify :op-checksig
+  [(list (hex->bytes "aabbcc")) '() '()]
+  [:op-dup :op-hash160]
+  [(list "0bfbcadae145d870428db173412d2d860b9acf5e" "aabbcc")
+   '() '()]
+
+  ;; Pre-state
+  [(list (hex->bytes "aabbcc")) '() '()]
+  ;; Script
+  [:op-dup :op-hash160
+   "0bfbcadae145d870428db173412d2d860b9acf5e" ]
+  ;; Post-state
+  [(list "0bfbcadae145d870428db173412d2d860b9acf5e"
+         "0bfbcadae145d870428db173412d2d860b9acf5e"
+         "aabbcc") '() '()]
+
+  ;; Pre-state
+  [(list (hex->bytes "aabbcc")) '() '()]
+  ;; Script
+  [:op-dup :op-hash160
+   (hex->bytes "0bfbcadae145d870428db173412d2d860b9acf5e")
+   :op-equalverify]
+  ;; Post-state
+  [(list "aabbcc") '() '()]
 
   )
 

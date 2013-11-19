@@ -121,6 +121,10 @@
 (defn ubyte [byte]
   (bit-and 0xff byte))
 
+(ann into-byte-array [(Seqable AnyInt) -> (Array byte)])
+(defn into-byte-array [coll]
+  (into-array Byte/TYPE (map unchecked-byte coll)))
+
 (ann hex->ubytes [String -> (Seqable AnyInt)])
 (defn hex->ubytes [hex]
   (map ubyte (hex->bytes hex)))

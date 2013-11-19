@@ -1,6 +1,7 @@
 (ns hyzhenhok.script
   (:require
    [hyzhenhok.util :refer :all]
+   [hyzhenhok.crypto :as crypto]
    [clojure.core.typed :refer :all])
   (:import
    [clojure.lang
@@ -211,6 +212,22 @@
 (defn prettify-output [output]
   (map #(if (keyword? %) % (ubytes->hex %)) output))
 
+;; I should turn this into canonicalize fn so i can use hex
+;; in and hex out in tests to represent bytes.
+(defn prettify-output2
+  "Gotta turn bytearrays to hex to compare them with expect."
+  [state]
+  (if-not (coll? state)
+    state
+    (mapv (fn [stack]
+           (if-not (coll? stack)
+             stack
+             (map #(cond
+                    (byte-array? %) (bytes->hex %)
+                    :else %)
+                  stack)))
+          state)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (ann ctrl-item? [ScriptItem -> (Nilable Keyword)])
@@ -241,6 +258,12 @@
 
 (ann execute-item [ScriptItem ScriptState -> ScriptState])
 (defmulti execute-item (fn [item state] item))
+
+;; default
+(defmethod ^{:doc "It's data rather than an opcode, so push the
+                   bytes onto stack."}
+  execute-item :default [bytes [main alt ctrl]]
+  [(conj main bytes) alt ctrl])
 
 ;; 0
 (defmethod execute-item :op-false [_ [main alt ctrl]]
@@ -300,6 +323,25 @@
 ;; 106
 (defmethod execute-item :op-return [_ [main alt ctrl]]
   [:invalid alt ctrl])
+
+;; Bitwise logic ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; 135
+(defmethod execute-item :op-equal [_ [[a b & main] alt ctrl]]
+  (let [val (cond
+             ;; Short-circuit into true if they're =.
+             (= a b) 1
+             ;; If they're both [B, then we can't compare with =.
+             (every? byte-array? [a b]) (if (= (seq a) (seq b))
+                                          1
+                                          0)
+             :else 0)]
+    [(conj main val) alt ctrl]))
+
+;; 136
+(defmethod execute-item :op-equalverify
+  [_ [main alt ctrl :as state]]
+  (execute-item :op-verify (execute-item :op-equal state)))
 
 ;; Stack ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -430,6 +472,11 @@
   [(concat (list a b a) main) alt ctrl])
 
 ;; Crypto ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; 169
+(defmethod execute-item :op-hash160
+  [_ [[a & main] alt ctrl]]
+  [(conj main (crypto/hash160 a)) alt ctrl])
 
 ;; 172 :op-checksig
 ;; - For normal txins, if creator of current txin can
