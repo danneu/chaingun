@@ -452,13 +452,17 @@
 ;;   successfully create a :txin/script that uses the right
 ;;   pubkey for the prev :txout/script they're trying to spend,
 ;;   that txin is considered valid.
-#_(defmethod execute-item :op-checksig
-  [_ [[pub-hash sig & rest] alt ctrl world]]
-  (let [script-part ; either full thing or :op-copdesep to end.
-        hash (hash-stuff txouts txins script-part)]
-    (if (valid-sig? sig pubkey hash)
-      1
-      0)))
+;; (defmethod execute-item :op-checksig
+;;   [_ [[pub-hash sig+hashcode & rest] alt ctrl :as state] world]
+;;   (println (bytes->hex pub-hash))
+;;   (let [hash-type (extract-hash-type sig+hashcode)
+;;         sig (drop-last-bytes 1 sig+hashcode)
+;;         ;; TODO: :op-codeseparators. For now, use full script.
+;;         subscript (:txout-script world)]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; (let [txin-state (execute txin-script)]
 ;;   (execute prev-txout-script :init-state txin-state))
