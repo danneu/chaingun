@@ -11,7 +11,7 @@
 (defmulti execute first)
 
 (defmethod execute "demo:seed" [_]
-  (db/seed-db)
+  (codec/seed-db)
   (System/exit 0))
 
 (defmethod execute "explorer" [[_ & [port & _]]]

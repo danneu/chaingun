@@ -29,6 +29,7 @@
   "SHA256 twice. (Satoshi-client colloquialism)"
   [data]
   (sha256 (sha256 data)))
+(def double-sha256 hash256)
 
 (ann hash160 [ByteArray -> ByteArray])
 (defn hash160

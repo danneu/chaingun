@@ -2,15 +2,19 @@
   (:require
    [hyzhenhok.util :refer :all]
    [hyzhenhok.crypto :as crypto]
+   [clojure.java.io :as io]
    [gloss.io :refer :all
     :exclude [contiguous encode decode]]
    [gloss.core :refer :all :exclude [byte-count]]
    [clojure.string :as str]
+   [hyzhenhok.db :as db]
    [clojure.core.typed :refer :all])
   (:import
    [clojure.lang
     IPersistentMap
     PersistentArrayMap]
+   [java.util
+    Date]
    [java.nio
     ByteBuffer
     ByteBuffer]))
@@ -20,6 +24,8 @@
    -> (IPersistentMap Any Any)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare genesis-block genesis-hash)
 
 (def-alias CompiledFrame
   gloss.core.protocols.Reader)
@@ -173,7 +179,6 @@
    :command command-codec
    :length length-codec
    :checksum checksum-codec))
-
 
 ;; Net-addr ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; - time     :uint32-le 4
@@ -673,8 +678,8 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(ann genesis-hash HexString)
-(def genesis-hash (str/join (repeat 64 \0)))
+;; (ann genesis-hash HexString)
+;; (def genesis-hash (str/join (repeat 64 \0)))
 
 (ann max-stop HexString)
 (def max-stop (str/join (repeat 64 \0)))
@@ -729,23 +734,282 @@
    :size :uint32-le
    :block block-payload-codec))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Used to convert Long<->Instant (:block/time)
+;; Need to ensure roundtrip parity between these two
+;; functions or else serialization roundtrips won't be equal!
+(defn seconds->instant [secs]
+  (Date. (* 1000 secs)))
+(defn instant->seconds [inst]
+  (-> (.getTime inst) (quot 1000)))
+
+
+(declare TxnCodec)
+
+(defn calc-txn-hash2 [txn]
+  (as-> (encode TxnCodec txn) _
+        (buf->bytes _)
+        (crypto/hash256 _)
+        (reverse-bytes _)))
+
+(declare BlockHeaderCodec)
+
+(defn calc-block-hash2 [blk]
+  (let [blk-header (merge (select-keys
+                           blk [:block/ver
+                                :prevBlockHash
+                                :block/merkleRoot
+                                :block/time
+                                :block/bits
+                                :block/nonce])
+                          ;; Even though :txn-count isn't hashed,
+                          ;; we set it so that the codec can
+                          ;; actually encode it even though
+                          ;; we end up only taking the first 80
+                          ;; bytes which doesn't include the
+                          ;; :txn-count.
+                          {:txnCount 0})]
+    (as-> (encode BlockHeaderCodec blk-header) _
+          (contiguous _)
+          (.array ^ByteBuffer _)
+          (take-bytes 80 _)
+          (crypto/hash256 _)
+          (reverse-bytes _))))
+
+;; Experimenting with a more 1:1 Codec<->DatomicEntity
+;; conversion. Perhaps I can do this without introducing
+;; dependency on a running transactor just to encode.
+
+;; "Entity-ready" keys will look like :block/merkleRoot,
+;; but if a key/value needs further processing or if it
+;; can't be determined without a db lookup, it'll be naked:
+;;
+;;   EX:
+;;   :prevBlockHash (bytes) vs the :block/prevBlock (ref)
+;;      you'd see in the database.
+
+(defcodec MagicCodec
+  (enum :uint32-le
+        {:mainnet 0xd9b4bef9
+         :testnet 0xdab5bffa
+         :testnet3 0x0709110b
+         :namecoin 0xfeb4bef9}))
+
+(defcodec VarIntCodec
+  (compile-frame
+   (header
+    :ubyte
+    ;; header value -> body codec
+    (fn [^long header-byte]
+      (case header-byte
+        0xfd (compile-frame :uint16-le)
+        0xfe (compile-frame :uint32-le)
+        0xff (compile-frame :uint64-le)
+        (compile-frame
+         nil-frame
+         ;; Pre-encode
+         (fn [body] body)
+         ;; Post-decode
+         (fn [_] header-byte))))
+    ;; Body value -> Header value
+    (fn [body-val]
+      (cond
+       (<  body-val 0xfd)       body-val
+       (<= body-val 0xffff)     0xfd
+       (<= body-val 0xffffffff) 0xfe
+       :else                    0xff)))))
+
+(defcodec ScriptCodec
+  (compile-frame
+   (finite-block VarIntCodec)
+   ;; Pre-encode
+   identity
+   ;; Post-decode
+   (fn [heapbuf]
+     (buf->bytes heapbuf))))
+
+(defcodec VarStrCodec
+  (finite-frame VarIntCodec (string :us-ascii)))
+
+(defcodec BitsCodec
+  (compile-frame
+   :uint32-le
+   ;; Pre-encode
+   (fn [bytes]
+     (bytes->unum bytes))
+   ;; Post-decode
+   (fn [n]
+     (num->bytes n))))
+
+(defcodec HashCodec
+  (compile-frame
+   ;(finite-frame 32 (repeated :byte :prefix :none))
+   (finite-block 32)
+   ;; Pre-encode (Flip to little endian)
+   (fn [bytes-be]
+     (reverse-bytes bytes-be)
+     ;(seq (reverse-bytes bytes-be))
+     )
+   ;; Post-decode (Flip to big endian)
+   (fn [heapbuf-le]
+     (reverse-bytes (buf->bytes heapbuf-le)))))
+
+(defcodec BlockHeaderCodec
+  (compile-frame
+   (ordered-map                            ; Total: 80 + var-int
+    :block/ver         protocol-ver-codec  ; 4
+    ;; BlockEntity has :block/prevBlock ref.
+    :prevBlockHash     HashCodec           ; 32
+    :block/merkleRoot  HashCodec           ; 32
+    :block/time        :uint32-le          ; 4
+    :block/bits        BitsCodec           ; 4 (aka nBits)
+    :block/nonce       :uint32-le          ; 4
+    ;; BlockEntity has :block/txns instead.
+    :txnCount          VarIntCodec         ; ??
+    )
+   ;; Pre-encode
+   (fn [header]
+     (-> header
+         (update-in [:block/time] (partial instant->seconds))))
+   ;; Post-decode -- Calc and append block-hash
+   (fn [header]
+     (as-> header _
+           (update-in _ [:block/time] (partial seconds->instant))
+           (assoc _ :block/hash (calc-block-hash2 _))))))
+
+(defcodec TxInCodec
+  (ordered-map
+   ;; Turns into :txIn/prevTxOut (ref).
+   ;; - txOut/idx and txn/hash used to find txOut ref.
+   :prevTxOut     (ordered-map
+                   :txn/hash  HashCodec
+                   :txOut/idx :uint32-le)
+   :txIn/script   ScriptCodec
+   :txIn/sequence :uint32-le))
+
+;; Txn output
+(defcodec TxOutCodec
+  (ordered-map
+   ;; Satoshis (BTC/10^8)
+   :txOut/value  :uint64-le
+   :txOut/script ScriptCodec))
+
+(defcodec TxnCodec
+  (compile-frame
+   (ordered-map
+    :txn/ver      :uint32-le
+    :txn/txIns    (repeated TxInCodec :prefix VarIntCodec)
+    :txn/txOuts   (repeated TxOutCodec :prefix VarIntCodec)
+    :txn/lockTime :uint32-le)
+   ;; Pre-encode
+   identity
+   ;; Post-decode
+   (fn [txn-map]
+     (assoc txn-map :txn/hash (calc-txn-hash2 txn-map)))))
+
+
+(defcodec BlockCodec
+  (compile-frame
+   (ordered-map
+    :block/ver         :uint32-le
+    :prevBlockHash     HashCodec
+    :block/merkleRoot  HashCodec
+    :block/time        :uint32-le
+    :block/bits        BitsCodec
+    :block/nonce       :uint32-le
+    :txns              (repeated TxnCodec :prefix VarIntCodec))
+   ;; Pre-encode
+   (fn [block]
+     (-> block
+         (update-in [:block/time] (partial instant->seconds))))
+   ;; Post-decode
+   (fn [block]
+     (as-> block _
+           (update-in _ [:block/time]
+                      (partial seconds->instant))
+           (assoc _ :block/hash (calc-block-hash2 _))
+           ;; :time Long -> :block/time Date
+           ))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defcodec BlkDatCodec
+  (ordered-map
+   :magic MagicCodec
+   :size :uint32-le
+   :block BlockCodec))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Seed DB ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn resource-bytes
+  "Returns file contents as a byte-array.
+   `filename` is relative to the resources dir.
+   Ex: (resource-bytes \"blk00000.dat\") => [B"
+  [filename]
+  (let [stream (io/input-stream (io/resource filename))
+        available (.available stream)
+        bytes-out (byte-array available)]
+    (.read stream bytes-out 0 available)
+    bytes-out))
+
+(defn lazy-blkdat-frames [filename]
+  (gloss.io/lazy-decode-all BlkDatCodec (resource-bytes filename)))
+
+(defn seed-db []
+  (println "Creating database...")
+  (db/create-db)
+  (print "Creating genesis block...")
+  (when (db/create-block
+         (decode BlockCodec genesis-block))
+    (println "Done."))
+  (print "Creating the first 299 post-genesis blocks...")
+  (doseq [blkdat (->> (lazy-blkdat-frames "blocks300.dat")
+                      (drop 1)
+                      (take 299))]
+    (when (db/create-block (:block blkdat))
+      (print ".") (flush)))
+  (println "Done. Blocks in database:" (db/get-block-count)))
+
+;(seed-db)
+
+(defn write-blocks300 []
+  (with-open [stream (io/output-stream
+                      "resources/blocks300.dat")]
+    (print "Writing to resources/blocks300.dat...")
+    (flush)
+    (let [blocks (take 300 (lazy-blkdat-frames "blk00000.dat"))]
+      (gloss.io/encode-to-stream BlkDatCodec stream blocks)
+      (println "Done."))))
+
+
+;(println (count (lazy-blkdat-frames "blk00000.dat")))
+
+
 ;; Genesis ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (require '[clojure.java.io :as io])
 
-(defn genesis-hex
-  "Ship with the genesis hex, the one block we can trust
+(def genesis-block
+  "Ship with the genesis block, the one block we can trust
    without verification. Every other block chains back
    to this block through :block/prevBlock."
-  []
   (->> (io/resource "genesis.dat")
        (slurp)
-       (str/trim-newline)))
+       (str/trim-newline)
+       (hex->bytes)))
 
 (def genesis-hash
-  (let [hash (->> (genesis-hex)
-                  (hex->bytes)
-                  (decode block-payload-codec)
-                  (calc-block-hash))]
-    (assert (= hash "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"))
+  (let [hash (->> genesis-block
+                  (decode BlockCodec)
+                  (calc-block-hash2))]
+    (assert (java.util.Arrays/equals
+             hash
+             (hex->bytes "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f")))
     hash))

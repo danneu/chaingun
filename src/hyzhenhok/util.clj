@@ -11,7 +11,7 @@
    [java.net InetAddress]
    [java.util Date]
    [org.apache.commons.codec.binary Hex]
-   [java.util Random]
+   [java.util Arrays Random]
    [java.security SecureRandom]
    [java.nio ByteBuffer]))
 
@@ -399,3 +399,25 @@
                       (num->bytes _)))]
           (let [leading0-prefix (repeat leading0s (byte 0))]
             (concat-bytes leading0-prefix output)))))))
+
+
+(ann bytes-equal? [ByteArray ByteArray -> Boolean])
+(defn bytes-equal? [bytes1 bytes2]
+  (Arrays/equals bytes1 bytes2))
+
+(defn hexify-structure
+  "Creates [possibly nested] datastructure where all byte-arrays
+   are represented has hexstring values. Particularly good for
+   testing since byte-arrays can't be compared with `=`."
+  [m]
+  (clojure.walk/walk
+   ;; Inner
+   (fn [[k v]]
+     (cond
+      (map? v) [k (hexify-structure v)]
+      (coll? v) [k (map hexify-structure v)]
+      (byte-array? v) [k (bytes->hex v)]
+      :else [k v]))
+   ;; Outer
+   identity
+   m))

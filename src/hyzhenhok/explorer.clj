@@ -1,6 +1,7 @@
 (ns hyzhenhok.explorer
   (:use [hiccup core def element form page util])
   (:require [hyzhenhok.db :as db]
+            [hyzhenhok.util :refer :all]
             [compojure.core :refer :all]
             [compojure.handler :as handler]
             [compojure.route :as route]
@@ -36,27 +37,35 @@
 
 ;; Templates ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; While it's not quite ready, I can show scripts in parsed form.
+(require '[hyzhenhok.script :as script])
+
 (defn show-txn [txn]
   (html
    [:h1 "Txn"]
    [:table
-    [:tr [:td ":txn/hash"] [:td (:txn/hash txn)]]
+    [:tr [:td ":txn/hash"] [:td (bytes->hex (:txn/hash txn))]]
     [:tr [:td ":txn/idx"] [:td (:txn/idx txn)]]
     [:tr [:td ":txn/ver"] [:td (:txn/ver txn)]]
     [:tr [:td ":txn/lockTime"] [:td (:txn/lockTime txn)]]
     [:tr
      [:td "block"]
      [:td (let [block-hash (:block/hash
-                            (first (:block/_txns txn)))]
-            (link-to (url "/blocks/" block-hash)
-                     block-hash))]]]
+                             (first (:block/_txns txn)))]
+            (link-to (url "/blocks/" (bytes->hex block-hash))
+                     (bytes->hex block-hash)))]]]
    [:hr]
    [:h2 ":txn/txIns"]
    [:table
     (for [txin (sort-by :txIn/idx (:txn/txIns txn))]
       (list
        [:tr [:td ":txIn/idx"] [:td (:txIn/idx txin)]]
-       [:tr [:td ":txIn/script"] [:td (:txIn/script txin)]]
+       [:tr [:td ":txIn/script"] [:td (bytes->hex
+                                        (:txIn/script txin))]]
+       [:tr [:td ":txIn/script (parsed):"] [:td (prn-str
+                                       (script/parse
+                                        (bytes->ubytes
+                                         (:txIn/script txin))))]]
        [:tr
         [:td ":txIn/sequence"]
         [:td (:txIn/sequence txin)]]
@@ -65,9 +74,11 @@
         [:td (if-let [prev-txout (:txIn/prevTxOut txin)]
                (let [txn (first (:txn/_txOuts prev-txout))]
                  [:ul
-                  [:li ":txn/hash: " (link-to (url "/txns/"
-                                                   (:txn/hash txn))
-                                             (:txn/hash txn))]
+                  [:li ":txn/hash: " (link-to
+                                      (url "/txns/"
+                                           (bytes->hex
+                                            (:txn/hash txn)))
+                                      (bytes->hex) (:txn/hash txn))]
                   [:li ":txOut/idx: " (:txOut/idx prev-txout)]])
                "N/A (Coinbase)")]]))]
    [:hr]
@@ -83,7 +94,17 @@
          (str " ("
               (satoshi->btc (:txOut/value txout))
               " BTC)")]]
-       [:tr [:td ":txOut/script"] [:td (:txOut/script txout)]]))]))
+       [:tr
+        [:td ":txOut/script"]
+        [:td
+         (bytes->hex (:txOut/script txout))]]
+       [:tr
+        [:td ":txOut/script (parsed)"]
+        [:td
+         (prn-str
+          (script/parse
+           (bytes->ubytes
+            (:txOut/script txout))))]]))]))
 
 
 (defn show-block [blk]
@@ -92,22 +113,27 @@
    [:table
     [:tr
      [:td ":block/hash"]
-     [:td (:block/hash blk)]]
+     [:td (bytes->hex (:block/hash blk))]]
     [:tr
      [:td ":block/prevBlock"]
-     [:td (if-let [prev-hash (:block/hash (:block/prevBlock blk))]
-            (link-to (url "/blocks/" prev-hash) prev-hash)
+     [:td (if-let [prev-hash (:block/hash
+                               (:block/prevBlock blk))]
+            (link-to (url "/blocks/"
+                          (bytes->hex prev-hash))
+                     (bytes->hex prev-hash))
             "--")]]
     [:tr
      [:td "nextBlock"]
      [:td (if-let [next-hash (:block/hash
-                              (first
-                               (:block/_prevBlock blk)))]
-            (link-to (url "/blocks/" next-hash) next-hash)
+                               (first
+                                (:block/_prevBlock blk)))]
+            (link-to (url "/blocks/"
+                          (bytes->hex next-hash))
+                     (bytes->hex next-hash))
             "--")]]
     [:tr
      [:td ":block/merkleRoot"]
-     [:td (:block/merkleRoot blk)]]
+     [:td (bytes->hex (:block/merkleRoot blk))]]
     [:tr
      [:td ":block/time"]
      [:td (str (format-instant (:block/time blk))
@@ -116,7 +142,7 @@
                " seconds)")]]
     [:tr
      [:td ":block/bits"]
-     [:td (:block/bits blk)]]
+     [:td (bytes->hex (:block/bits blk))]]
     [:tr
      [:td ":block/nonce"]
      [:td (:block/nonce blk)]]]
@@ -125,12 +151,14 @@
    [:style "ol > li:first-child:after { content:\" (Coinbase)\"; } "]
    [:ol {:start "0"}
     (for [txn (sort-by :txn/idx (:block/txns blk))]
-      [:li (link-to (url "/txns/" (:txn/hash txn))
-                    (:txn/hash txn))])]
+      [:li (link-to (url "/txns/" (bytes->hex (:txn/hash txn)))
+                    (bytes->hex (:txn/hash txn)))])]
    [:hr]
    [:ul
-    [:li (link-to-blockexplorer-com (:block/hash blk))]
-    [:li (link-to-blockchain-info (:block/hash blk))]]))
+    [:li (link-to-blockexplorer-com
+          (bytes->hex (:block/hash blk)))]
+    [:li (link-to-blockchain-info
+          (bytes->hex (:block/hash blk)))]]))
 
 ;; Routes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -1,22 +1,22 @@
 [
  ;; Block
  ;;
- ;; - :block/hash       one String
+ ;; - :block/hash       one Bytes
  ;; - :block/ver        one Long
  ;; - :block/prevBlock  one Ref
- ;; - :block/merkleRoot one String
+ ;; - :block/merkleRoot one Bytes
  ;; - :block/time       one Instant
- ;; - :block/bits       one String (Hex)
+ ;; - :block/bits       one Bytes
  ;; - :block/nonce      one Long
- ;; - :block/txns       one Ref
+ ;; - :block/txns       many Ref
 
- ;; :block/hash one String
+ ;; :block/hash one Bytes
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/doc         "Block hash."
   :db/unique      :db.unique/value
   :db/ident       :block/hash
-  :db/valueType   :db.type/string
+  :db/valueType   :db.type/bytes
   :db/cardinality :db.cardinality/one}
  ;; :block/ver one Long
  {:db/id #db/id[:db.part/db]
@@ -32,12 +32,12 @@
   :db/ident       :block/prevBlock
   :db/valueType   :db.type/ref
   :db/cardinality :db.cardinality/one}
- ;; :block/merkleRoot one String
+ ;; :block/merkleRoot one Bytes
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/doc         "Block merkle root."
   :db/ident       :block/merkleRoot
-  :db/valueType   :db.type/string
+  :db/valueType   :db.type/bytes
   :db/cardinality :db.cardinality/one}
  ;; :block/time one Instant
  {:db/id #db/id[:db.part/db]
@@ -46,12 +46,12 @@
   :db/ident       :block/time
   :db/valueType   :db.type/instant
   :db/cardinality :db.cardinality/one}
- ;; :block/bits one String
+ ;; :block/bits one Bytes
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/doc         "Block target difficulty bits (compact hex)."
   :db/ident       :block/bits
-  :db/valueType   :db.type/string
+  :db/valueType   :db.type/bytes
   :db/cardinality :db.cardinality/one}
  ;; :block/nonce one Long
  {:db/id #db/id[:db.part/db]
@@ -70,20 +70,20 @@
 
  ;; Txn
  ;;
- ;; - :txn/hash     one String (unique value)
+ ;; - :txn/hash     one Bytes
  ;; - :txn/idx      one Long
  ;; - :txn/ver      one Long
  ;; - :txn/lockTime one Long
  ;; - :txn/txIns    many Refs
  ;; - :txn/txOuts   many Refs
 
- ;; :txn/hash (one unique-value string)
+ ;; :txn/hash (one unique-value bytes)
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/doc         "Txn hash."
   :db/unique      :db.unique/value
   :db/ident       :txn/hash
-  :db/valueType   :db.type/string
+  :db/valueType   :db.type/bytes
   :db/cardinality :db.cardinality/one}
  ;; :txn/idx (one long)
  {:db/id #db/id[:db.part/db]
@@ -124,7 +124,7 @@
  ;; TxIn
  ;;
  ;; - :txIn/idx       one Long
- ;; - :txIn/script    one String
+ ;; - :txIn/script    one Bytes
  ;; - :txIn/sequence  one Long
  ;; - :txIn/prevTxOut one Ref (derived from txn-hash & txout-idx)
 
@@ -135,12 +135,12 @@
   :db/ident       :txIn/idx
   :db/valueType   :db.type/long
   :db/cardinality :db.cardinality/one}
- ;; :txIn/script (one String)
+ ;; :txIn/script (one Bytes)
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/doc         "TxIn signature script."
   :db/ident       :txIn/script
-  :db/valueType   :db.type/string
+  :db/valueType   :db.type/bytes
   :db/cardinality :db.cardinality/one}
  ;; :txIn/sequence (one Long)
  {:db/id #db/id[:db.part/db]
@@ -161,7 +161,7 @@
  ;;
  ;; - :txOut/idx    one Long
  ;; - :txOut/value  one Long
- ;; - :txOut/script one String
+ ;; - :txOut/script one Bytes
 
  ;; :txOut/idx (one Long)
  {:db/id #db/id[:db.part/db]
@@ -177,10 +177,10 @@
   :db/ident       :txOut/value
   :db/valueType   :db.type/long
   :db/cardinality :db.cardinality/one}
- ;; :txOut/script (one String)
+ ;; :txOut/script (one Bytes)
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/doc         "TxOut pubkey script."
   :db/ident       :txOut/script
-  :db/valueType   :db.type/string
+  :db/valueType   :db.type/bytes
   :db/cardinality :db.cardinality/one}]

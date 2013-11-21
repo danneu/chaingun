@@ -1,11 +1,11 @@
 (ns hyzhenhok.db
   (:require
    [clojure.java.io :as io]
+   [clojure.core.typed :as t]
    [clojure.string :as str]
    [datomic.api :as d]
    [gloss.io]
-   [hyzhenhok.util :refer :all]
-   [hyzhenhok.codec :as codec])
+   [hyzhenhok.util :refer :all])
   (:import
    [datomic Util]
    [java.util Date]))
@@ -101,13 +101,36 @@
   (find-by (d/db (get-conn)) :db/id eid))
 
 (defn find-block-by-hash [hash]
-  (find-by (d/db (get-conn)) :block/hash hash))
+  (let [hash-bytes (if (string? hash)
+                     (hex->bytes hash)
+                     hash)]
+    (qe '[:find ?e
+          :in $ ?hash-bytes
+          :where
+          [?e :block/hash ?hash]
+          [(java.util.Arrays/equals
+            ^bytes ?hash ^bytes ?hash-bytes)]]
+        (get-db) hash-bytes)))
+
+(defn find-by
+  "Returns the unique entity identified by attr and val.
+   Ex: (find-by :user/uid 42)"
+  [db attr val]
+  (qe '[:find ?e
+        :in $ ?attr ?val
+        :where [?e ?attr ?val]]
+      db attr val))
+
+;; Dynamically created in hyzhenhok.codec, but to avoid
+;; circular dependency, hard-code it here for now...
+(def genesis-hash
+  (hex->bytes "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"))
 
 (defn genesis-block? [block]
-  (= codec/genesis-hash (:block/hash block)))
+  (java.util.Arrays/equals genesis-hash (:block/hash block)))
 
 (defn find-genesis-block []
-  (find-block-by-hash codec/genesis-hash))
+  (find-block-by-hash genesis-hash))
 
 (defn get-block-count
   "Returns count of blocks in the db."
@@ -117,17 +140,33 @@
                  (d/db (get-conn))))
       0))
 
-(defn find-txn-by-hash [hash]
-  (find-by (d/db (get-conn)) :txn/hash hash))
+(defn find-txn-by-hash
+  "Find txn by hash (String or ByteArray)."
+  [hash]
+  (let [hash (if (string? hash)
+               (hex->bytes hash)
+               hash)]
+    (qe '[:find ?e
+          :in $ ?given-hash
+          :where
+          [?e :txn/hash ?hash]
+          [(java.util.Arrays/equals
+            ^bytes ?hash ^bytes ?given-hash)]]
+        (get-db) hash)))
 
 (defn find-txout-by-hash-and-idx [db hash idx]
-  (qe '[:find ?txout
-        :in $ ?hash ?idx
-        :where
-        [?txn :txn/hash ?hash]
-        [?txn :txn/txOuts ?txout]
-        [?txout :txOut/idx ?idx]]
-      db hash idx))
+  (let [hash (if (string? hash)
+               (hex->bytes hash)
+               hash)]
+    (qe '[:find ?txout
+          :in $ ?given-hash ?idx
+          :where
+          [?txn :txn/hash ?hash]
+          [(java.util.Arrays/equals ^bytes ?hash
+                                    ^bytes ?given-hash)]
+          [?txn :txn/txOuts ?txout]
+          [?txout :txOut/idx ?idx]]
+        db hash idx)))
 
 (defn get-block-idx
   "Slow ad-hoc way to get the idx of a block
@@ -158,139 +197,48 @@
   [{:keys [hash]}]
   (= hash (str/join (repeat 32 \0))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn construct-txns
-  "Run for each txn in :block/txns. Each :txIn/prevTxOut is
-   matched with a txOut that either exists in the database or
-   within a txn constructed earlier in the loop."
-  [db raw-txns]
-  (loop [db db
-         raw-txns raw-txns
-         constructed-txns []
-         idx 0]
-    (let [raw-txn (first raw-txns)]
-      (if-not raw-txn
-        ;; Done
-        constructed-txns
-        ;; If there's another raw-txn, then we construct
-        ;; another txn.
-        (let [constructed-txn
-              {:db/id (tempid)
-               :txn/idx idx
-               :txn/hash (:txn-hash raw-txn)
-               :txn/ver (:txn-ver raw-txn)
-               :txn/lockTime (:lock-time raw-txn)
-               :txn/txOuts (map-indexed
-                            (fn [idx txout]
-                              {:db/id (tempid)
-                               :txOut/idx idx
-                               :txOut/value (long (:value txout))
-                               :txOut/script (:script txout)})
-                            (:txouts raw-txn))
-               :txn/txIns (map-indexed
-                           (fn [idx txin]
-                             (merge
-                              {:db/id (tempid)
-                               :txIn/idx idx
-                               :txIn/script (:script txin)
-                               :txIn/sequence (:sequence txin)}
-                              ;; :prev-output {:hash "...", :idx 0}
-                              ;; We don't care about coinbase outs.
-                              (when-not (coinbase? (:prev-output txin))
-                                ;; And we ignore
-                                (when-let [txout
-                                           (find-txout-by-hash-and-idx
-                                            db
-                                            (:hash (:prev-output txin))
-                                            (:idx (:prev-output txin)))]
-                                  {:txIn/prevTxOut (:db/id txout)}))))
-                           (:txins raw-txn))}]
-          (recur
-           ;; Extend the db so the rest of the txns can see
-           ;; this txn with the find-txout-by-hash-and-idx lookup.
-           (:db-after (d/with db [constructed-txn]))
-           (next raw-txns)
-           (conj constructed-txns constructed-txn)
-           (inc idx)))))))
+(defn touch-all [entity]
+  (->> (d/touch entity)
+       (map (fn [[k v]]
+              (if (coll? v)
+                [k (into #{} (map d/touch v))]
+                [k v])))
+       (into {})))
 
-(defn construct-block [db eid block]
-  (merge
-   {:db/id eid
-    :block/hash (:block-hash block)
-    :block/ver (:block-ver block)
-    :block/merkleRoot (:merkle-root block)
-    :block/time (Date. (* 1000 (:time block)))
-    :block/bits (:bits block)
-    :block/nonce (:nonce block)
-    :block/txns (construct-txns db (:txns block))}
-   (when-let [prev-block (find-block-by-hash
-                          (:prev-block block))]
-     {:block/prevBlock (:db/id prev-block)})))
+;; FIXME: I need to write a function that turns (nested)
+;;        entity maps into maps ready for codec pre-encode.
+(defn map-all
+  "Sort of like a recursive touch. I needed it in a few
+   experimental use-cases where I needed map ops on entity-maps."
+  [entity]
+  (->> (d/touch entity)
+       (map (fn [[k v]]
+              (if (coll? v)
+                [k (into #{} (map (comp #(into {} %)
+                                        d/touch)
+                                  v))]
+                [k v])))
+       (into {})))
 
-(defn create-block
-  "Returns the created block entity-map or nil if
-   a block with this hash already exists."
-  [raw-block]
-  (when-not (find-block-by-hash (:block-hash raw-block))
-    (let [temp-block-eid (tempid)]
-      (let [result (->> [(construct-block (d/db (get-conn))
-                                          temp-block-eid
-                                          raw-block)]
-                        (d/transact (get-conn))
-                        (deref))]
-        (let [real-block-eid (d/resolve-tempid (:db-after result)
-                                               (:tempids result)
-                                               temp-block-eid)]
-          ;;(println (class (:db-after result)))
-          (d/entity (:db-after result) real-block-eid))))))
+;; (def toy-txn
+;;   (find-txn-by-hash "828ef3b079f9c23829c56fe86e85b4a69d9e06e5b54ea597eef5fb3ffef509fe"))
+
+;; (def toy-txIn
+;;   (-> (find-txn-by-hash "828ef3b079f9c23829c56fe86e85b4a69d9e06e5b54ea597eef5fb3ffef509fe")
+;;       (get-in [:txn/txIns])
+;;       (last)
+;;       (d/touch)))
+
+;; TODO: Support txOuts too
+(defn parent-txn
+  [txIO]
+  (case (some #{:txIn/idx :txOut/idx} (keys txIO))
+    :txIn/idx  (first (:txn/_txIns txIO))
+    :txOut/idx (first (:txn/_txOuts txIO))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Seeding the db ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; Move some of this to hyzhenhok.codec.
-
-(defn resource-bytes
-  "Returns file contents as a byte-array.
-   `filename` is relative to the resources dir.
-   Ex: (resource-bytes \"blk00000.dat\") => [B"
-  [filename]
-  (let [stream (io/input-stream (io/resource filename))
-        available (.available stream)
-        bytes-out (byte-array available)]
-    (.read stream bytes-out 0 available)
-    bytes-out))
-
-;; (defn blk0-frames
-;;   "Lazy sequence of blockdats decoded from blk00000.dat.
-
-;;    {:magic _ (:mainnet or :testnet3)
-;;     :size _ (Represents byte-count of :block and the 4 bytes
-;;              that represent this :size integer)
-;;     :block {...}"
-;;   []
-;;   (let [blk0-bytes (resource-bytes "blk00000.dat")]
-;;     (gloss.io/lazy-decode-all codec/blockdat-codec
-;;                               blk0-bytes)))
-
-(defn lazy-blockdat-frames [filename]
-  (gloss.io/lazy-decode-all codec/blockdat-codec (resource-bytes filename)))
-
-(defn seed-db []
-  (println "Creating database...")
-  (create-db)
-  (print "Creating genesis block...")
-  (when (create-block
-         (codec/decode codec/block-payload-codec
-                       (hex->bytes (codec/genesis-hex))))
-    (println "Done."))
-  (print "Creating the first 99 post-genesis blocks...")
-  (doseq [blkdat (->> (lazy-blockdat-frames "blocks100.dat")
-                      (drop 1)
-                      (take 99))]
-    (when (create-block (:block blkdat))
-      (print ".")))
-  (println "Done. Blocks in database:" (get-block-count)))
 
 ;; Round trip to Bitcoin's blk00000.dat:
 ;;
@@ -305,16 +253,6 @@
 ;;                                   (blk0-bytes))))
 ;; => 100
 
-(defn write-blocks100 []
-  (with-open [stream (io/output-stream
-                      (io/resource "blocks100.dat"))]
-    (print "Writing to resources/blocks100.dat...")
-    (flush)
-    (let [blocks (take 100 (lazy-blockdat-frames "blk00000.dat"))]
-      (gloss.io/encode-to-stream codec/blockdat-codec
-                                 stream
-                                 blocks)
-      (println "Done."))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -353,3 +291,88 @@
 ;; (pprint (construct-block (d/db conn) toyblk0))
 ;; (find-txout-by-hash-and-idx (d/db conn) the-hash 0)
 ;; (pprint (construct-block (d/db conn) toyblk170))
+
+(defn construct-txns
+  "Run for each txn in :block/txns. Each :txIn/prevTxOut is
+   matched with a txOut that either exists in the database or
+   within a txn constructed earlier in the loop."
+  [db raw-txns]
+  (loop [db db
+         raw-txns raw-txns
+         constructed-txns []
+         idx 0]
+    (let [raw-txn (first raw-txns)]
+      (if-not raw-txn
+        ;; Done
+        constructed-txns
+        ;; If there's another raw-txn, then we construct
+        ;; another txn.
+        (let [constructed-txn
+              {:db/id (tempid)
+               :txn/idx idx
+               :txn/hash (:txn/hash raw-txn)
+               :txn/ver (:txn/ver raw-txn)
+               :txn/lockTime (:txn/lockTime raw-txn)
+               :txn/txOuts (map-indexed
+                            (fn [idx txout]
+                              {:db/id (tempid)
+                               :txOut/idx idx
+                               :txOut/value (long (:txOut/value txout))
+                               :txOut/script (:txOut/script txout)})
+                            (:txn/txOuts raw-txn))
+               :txn/txIns (map-indexed
+                           (fn [idx txin]
+                             (merge
+                              {:db/id (tempid)
+                               :txIn/idx idx
+                               :txIn/script (:txIn/script txin)
+                               :txIn/sequence (:txIn/sequence txin)}
+                              ;; :prev-output {:hash "...", :idx 0}
+                              ;; We don't care about coinbase outs.
+                              (when-not (coinbase? (:prevTxOut txin))
+                                ;; And we ignore
+                                (when-let [txout
+                                           (find-txout-by-hash-and-idx
+                                            db
+                                            (:txn/hash (:prevTxOut txin))
+                                            (:txOut/idx (:prevTxOut txin)))]
+                                  {:txIn/prevTxOut (:db/id txout)}))))
+                           (:txn/txIns raw-txn))}]
+          (recur
+           ;; Extend the db so the rest of the txns can see
+           ;; this txn with the find-txout-by-hash-and-idx lookup.
+           (:db-after (d/with db [constructed-txn]))
+           (next raw-txns)
+           (conj constructed-txns constructed-txn)
+           (inc idx)))))))
+
+(defn construct-block [db eid block]
+  (merge
+   {:db/id eid
+    :block/hash (:block/hash block)
+    :block/ver (:block/ver block)
+    :block/merkleRoot (:block/merkleRoot block)
+    :block/time (:block/time block)
+    :block/bits (:block/bits block)
+    :block/nonce (:block/nonce block)
+    :block/txns (construct-txns db (:txns block))}
+   (when-let [prev-block (find-block-by-hash
+                          (:prevBlockHash block))]
+     {:block/prevBlock (:db/id prev-block)})))
+
+(defn create-block
+  "Returns the created block entity-map or nil if
+   a block with this hash already exists."
+  [raw-block]
+  (when-not (find-block-by-hash (:block/hash raw-block))
+    (let [temp-block-eid (tempid)]
+      (let [result (->> [(construct-block (d/db (get-conn))
+                                          temp-block-eid
+                                          raw-block)]
+                        (d/transact (get-conn))
+                        (deref))]
+        (let [real-block-eid (d/resolve-tempid (:db-after result)
+                                               (:tempids result)
+                                               temp-block-eid)]
+          ;;(println (class (:db-after result)))
+          (d/entity (:db-after result) real-block-eid))))))

@@ -4,6 +4,7 @@
             [hyzhenhok.util :refer :all]
             [clojure.string :as str]))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Script parsing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -55,11 +56,6 @@
 
 (num->hex 171)
 
-
-(num->hex 75)
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Script execution ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -69,7 +65,7 @@
       ;; TODO: Make a better error-handling system during
       ;;       script parse/execute.
       (try (prettify-output2
-            (execute script pre-state))
+            (execute script pre-state {}))
            (catch clojure.lang.ExceptionInfo _
            :threw)))
 
@@ -218,3 +214,15 @@
   )
 
   ['() '() '()]
+
+;; (let [world {
+;;              :txIn {:txIn/idx 0
+;;                     :txIn/prevTxOut {:txOut/script "lol"}}}])
+;; (expect
+;;     (let [pubkey (hex->bytes "abcd11")
+;;           sig (hex->bytes
+;;                "0bfbcadae145d870428db173412d2d860b9acf5e")]
+;;       (execute [:op-checksig]
+;;                [(list pubkey sig) '() '()]
+;;                {:txIn/idx 0
+;;                 :txIn/prevTxOut {:txOut/script "lol"}})))

@@ -2,6 +2,7 @@
   (:require
    [hyzhenhok.util :refer :all]
    [hyzhenhok.crypto :as crypto]
+   [hyzhenhok.codec :as codec]
    [clojure.core.typed :refer :all])
   (:import
    [clojure.lang
@@ -257,47 +258,48 @@
    (nil? (peek ctrl))))
 
 (ann execute-item [ScriptItem ScriptState -> ScriptState])
-(defmulti execute-item (fn [item state] item))
+(defmulti execute-item (fn [& [command]] command))
 
 ;; default
-(defmethod execute-item :default [bytes [main alt ctrl]]
+(defmethod execute-item :default [& [bytes [main alt ctrl]]]
   ;; It's data rather than an opcode, so push the bytes onto stack.
   [(conj main bytes) alt ctrl])
 
 ;; 0
-(defmethod execute-item :op-false [_ [main alt ctrl]]
+(defmethod execute-item :op-false [& [_ [main alt ctrl]]]
   [(conj main 0) alt ctrl])
 
 ;; 79
-(defmethod execute-item :op-1negate [_ [main alt ctrl]]
+(defmethod execute-item :op-1negate [& [_ [main alt ctrl]]]
   [(conj main -1) alt ctrl])
 
 ;; 81
-(defmethod execute-item :op-true [_ [main alt ctrl]]
+(defmethod execute-item :op-true [& [_ [main alt ctrl]]]
   [(conj main 1) alt ctrl])
 
 ;; 81
-(defmethod execute-item :op-2 [_ [main alt ctrl]]
+(defmethod execute-item :op-2 [& [_ [main alt ctrl]]]
   [(conj main 2) alt ctrl])
 
 ;; Flow control ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; 97
-(defmethod execute-item :op-nop [_ state]
+(defmethod execute-item :op-nop [& [_ state]]
   state)
 
 ;; 99
-(defmethod execute-item :op-if [_ [main alt ctrl]]
+(defmethod execute-item :op-if [& [_ [main alt ctrl]]]
   (let [phase (if (stack-true? main) :true :false)]
     [(rest main) alt (conj ctrl phase)]))
 
 ;; 100
-(defmethod execute-item :op-notif [_ [main alt ctrl]]
+(defmethod execute-item :op-notif [& [_ [main alt ctrl]]]
   (let [phrase (if-not (stack-true? main) :true :false)]
     [(rest main) alt (conj ctrl phrase)]))
 
 ;; 103
-(defmethod execute-item :op-else [_ [main alt ctrl]]
+(defmethod execute-item :op-else
+  [& [_ [main alt ctrl]]]
   (let [phase (case (peek ctrl)
                 :true :drained
                 :false :true
@@ -306,7 +308,8 @@
     [main alt (conj (rest ctrl) phase)]))
 
 ;; 104
-(defmethod execute-item :op-endif [_ [main alt ctrl]]
+(defmethod execute-item :op-endif
+  [& [_ [main alt ctrl]]]
   (if (peek ctrl)
     [main alt (pop ctrl)]
     ;; TODO: Test this case.
@@ -314,19 +317,22 @@
 
 ;; 105
 ;; TODO: For now I'll just return :invalid
-(defmethod execute-item :op-verify [_ [main alt ctrl]]
+(defmethod execute-item :op-verify
+  [& [_ [main alt ctrl]]]
   (if (stack-true? main)
     [(rest main) alt ctrl]
     [:invalid alt ctrl]))
 
 ;; 106
-(defmethod execute-item :op-return [_ [main alt ctrl]]
+(defmethod execute-item :op-return
+  [& [_ [main alt ctrl]]]
   [:invalid alt ctrl])
 
 ;; Bitwise logic ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; 135
-(defmethod execute-item :op-equal [_ [[a b & main] alt ctrl]]
+(defmethod execute-item :op-equal
+  [& [_ [[a b & main] alt ctrl]]]
   (let [val (cond
              ;; Short-circuit into true if they're =.
              (= a b) 1
@@ -339,104 +345,112 @@
 
 ;; 136
 (defmethod execute-item :op-equalverify
-  [_ [main alt ctrl :as state]]
+  [& [_ [main alt ctrl :as state]]]
   (execute-item :op-verify (execute-item :op-equal state)))
 
 ;; Stack ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; 107
-(defmethod execute-item :op-toaltstack [_ [main alt ctrl]]
+(defmethod execute-item :op-toaltstack
+  [& [_ [main alt ctrl]]]
   [(rest main) (conj alt (peek main)) ctrl])
 
 ;; 108
-(defmethod execute-item :op-fromaltstack [_ [main alt ctrl]]
+(defmethod execute-item :op-fromaltstack
+  [& [_ [main alt ctrl]]]
   [(conj main (peek alt)) (rest alt) ctrl])
 
 ;; 109
-(defmethod execute-item :op-2drop [_ [main alt ctrl :as state]]
+(defmethod execute-item :op-2drop
+  [& [_ [main alt ctrl :as state]]]
   ;; Removes top two stack values.
   [(drop 2 main) alt ctrl])
 
 ;; 110
 (defmethod execute-item :op-2dup
-  [_ [[a b & _ :as main] alt ctrl]]
+  [& [_ [[a b & _ :as main] alt ctrl]]]
   [(concat (list a b) main) alt ctrl])
 
 ;; 111
 (defmethod execute-item :op-3dup
-  [_ [[a b c & _ :as main] alt ctrl]]
+  [& [_ [[a b c & _ :as main] alt ctrl]]]
   [(concat (list a b c) main) alt ctrl])
 
 ;; 112
-(defmethod execute-item :op-2over [_ [[_ _ c d & main] alt ctrl]]
+(defmethod execute-item :op-2over
+  [& [_ [[_ _ c d & main] alt ctrl]]]
   ;; Copies 3rd and 4th items to top of stack.
   [(concat (list c d) main) alt ctrl])
 
 ;; 113
-(defmethod execute-item :op-2rot [_ [[a b c d e f & main] alt ctrl]]
+(defmethod execute-item :op-2rot
+  [& [_ [[a b c d e f & main] alt ctrl]]]
   ;; 5th and 6th values are moved to top.
   [(concat (list e f a b c d) main) alt ctrl])
 
 ;; 114
-(defmethod execute-item :op-2swap [_ [[a b c d & main] alt ctrl]]
+(defmethod execute-item :op-2swap
+  [& [_ [[a b c d & main] alt ctrl]]]
   ;; Swaps the first pair with the second pair.
   [(concat (list c d a b) main) alt ctrl])
 
 ;; 115
-(defmethod execute-item :op-ifdup [_ [main alt ctrl :as state]]
+(defmethod execute-item :op-ifdup
+  [& [_ [main alt ctrl :as state]]]
   ;; If top stack value is true, duplicate it.
   (if (stack-true? main)
     (execute-item :op-dup state)
     state))
 
 ;; 116
-(defmethod execute-item :op-depth [_ [main alt ctrl]]
+(defmethod execute-item :op-depth [& [_ [main alt ctrl]]]
   ;; Pushes stack-size onto stack.
   [(conj main (count main)) alt ctrl])
 
 ;; 117
-(defmethod execute-item :op-drop [_ [main alt ctrl :as state]]
+(defmethod execute-item :op-drop [& [_ [main alt ctrl]]]
   ;; Removes top stack value.
   [(drop 1 main) alt ctrl])
 
 ;; 118
-(defmethod execute-item :op-dup [_ [main alt ctrl]]
+(defmethod execute-item :op-dup [& [_ [main alt ctrl]]]
   [(conj main (peek main)) alt ctrl])
 
 ;; 119
-(defmethod execute-item :op-nip [_ [[a & main] alt ctrl]]
+(defmethod execute-item :op-nip [& [_ [[a & main] alt ctrl]]]
   ;; Removes second-to-top stack value.
   [(conj (rest main) a) alt ctrl])
 
 ;; 120
-(defmethod execute-item :op-over [_ [[_ b & _ :as main] alt ctrl]]
+(defmethod execute-item :op-over
+  [& [_ [[_ b & _ :as main] alt ctrl]]]
   ;; Copies second-to-top stack value to the top.
   [(conj main b) alt ctrl])
 
 ;; 121
-(defmethod execute-item :op-pick [_ [[n & rest] alt ctrl]]
+(defmethod execute-item :op-pick [& [_ [[n & rest] alt ctrl]]]
   ;; Value at idx `n` is copied to the top.
   [(conj rest (nth rest n)) alt ctrl])
 
 ;; 122
-(defmethod execute-item :op-roll [_ [[n & main] alt ctrl]]
+(defmethod execute-item :op-roll [& [_ [[n & main] alt ctrl]]]
   ;; Value at idx `n` is moved to the top.
   (let [main' (concat (take n main)
                       (drop (inc n) main))]
     [(conj main' (nth main n)) alt ctrl]))
 
 ;; 123
-(defmethod execute-item :op-rot [_ [[a b c & main] alt ctrl]]
+(defmethod execute-item :op-rot [& [_ [[a b c & main] alt ctrl]]]
   ;; Top three values are rotated to the left.
   [(concat (list b c a) main) alt ctrl])
 
 ;; 124
-(defmethod execute-item :op-swap [_ [[a b & main] alt ctrl]]
+(defmethod execute-item :op-swap [& [_ [[a b & main] alt ctrl]]]
   ;; Top two values are swapped.
   [(concat (list b a) main) alt ctrl])
 
 ;; 125
-(defmethod execute-item :op-tuck [_ [[a b & main] alt ctrl]]
+(defmethod execute-item :op-tuck [& [_ [[a b & main] alt ctrl]]]
   ;; Top stack value copied behind second-to-top.
   [(concat (list a b a) main) alt ctrl])
 
@@ -444,103 +458,137 @@
 
 ;; 169
 (defmethod execute-item :op-hash160
-  [_ [[a & main] alt ctrl]]
+  [& [_ [[a & main] alt ctrl]]]
   [(conj main (crypto/hash160 a)) alt ctrl])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; :op-checksig experimentation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; 172 :op-checksig
 ;; - For normal txins, if creator of current txin can
 ;;   successfully create a :txin/script that uses the right
 ;;   pubkey for the prev :txout/script they're trying to spend,
 ;;   that txin is considered valid.
-;; (defmethod execute-item :op-checksig
-;;   [_ [[pub-hash sig+hashcode & rest] alt ctrl :as state] world]
-;;   (println (bytes->hex pub-hash))
-;;   (let [hash-type (extract-hash-type sig+hashcode)
-;;         sig (drop-last-bytes 1 sig+hashcode)
-;;         ;; TODO: :op-codeseparators. For now, use full script.
-;;         subscript (:txout-script world)]))
+
+(require '[hyzhenhok.codec :as codec])
+(require '[hyzhenhok.db :as db])
+(require '[datomic.api :as d])
+
+(defn extract-hash-type [sig]
+  (case (ubyte (last sig))
+    0x01 :sighash-all
+    0x02 :sighash-none
+    0x03 :sighash-single
+    0x80 :sighash-anyonecanpay
+    :sighash-all  ; by default
+    ))
+
+(defn clear-txin-script
+  "Replaces :txIn/script with empty-byte [B."
+  [txIn]
+  (update-in txIn [:txIn/script] (constantly (byte-array 1))))
+
+(defn clear-txin-scripts
+  "Replaces all :txIn/script in txn with empty-byte [B."
+  [txn]
+  (update-in txn [:txn/txIns] (partial map clear-txin-script)))
+
+;; Ad hoc codec to serialize the cleared txn with a hashtype
+;; appended to the end as part of checksig process.
+(gloss.core/defcodec txncopy-codec
+  (gloss.core/ordered-map
+   :txncopy codec/TxnCodec
+   :hashtype :uint32-le))
+
+(defmethod execute-item :op-checksig
+  [& [_
+      [[pub-hash sig+hashcode & rest] alt ctrl]
+      {:keys [txn txIn]}]]
+  (let [txIn-idx (:txIn/idx txIn)
+        hashtype (extract-hash-type sig+hashcode)
+        sig (drop-last-bytes 1 sig+hashcode)
+        ;; TODO: :op-codeseparators. For now, use full script.
+        subscript (-> (:txIn/prevTxOut txIn)
+                      (:txOut/script))]
+    (let [txncopy {:txncopy (-> (clear-txin-scripts txn)
+                                (assoc-in
+                                 [:txn/txIns txIn-idx :txIn/script]
+                                 subscript))
+                   :hashtype hashtype}]
+      (let [txncopy-bytes (codec/encode txncopy-codec txncopy)
+            txncopy-hash (crypto/double-sha256 txncopy-bytes)]
+        txncopy-hash
+        [alt alt alt]))))
+
+;; (codec/encode txncopy-codec
+;;               {:txncopy  db/toy-txn
+;;                :hashtype 1})
+
+;; (db/map-all db/toy-txn)
+
+;; (:txn/txOuts (db/touch-all db/toy-txn))
+
+;; (codec/encode codec/txIn-kodec db/toy-txIn)
+
+
+;; (as-> (db/touch-all db/toy-txn) _
+;;       (update-in _ [:txn/txIns] #(sort-by :txIn/idx %))
+;;       (update-in _ [:txn/txOuts] #(sort-by :txOut/idx %))
+;;       ;(codec/encode codec/txn-kodec _)
+;;       )
+
+
+;; (gloss.io/encode
+;;  txncopy-codec
+;;  ;; txncopy
+;;  {:txncopy
+;;   (into {} (datomic.api/touch (db/parent-txn db/txIn-toy)))
+;;   :hashtype 1})
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (let [txin-state (execute txin-script)]
-;;   (execute prev-txout-script :init-state txin-state))
-
-;; ['(:txin-pubkey :txin-sig) '() '()]
-;; :op-checksig
-;; ;1. Pop them from stack ['() '() '()]
-;; ; txin/pubkey = ...
-;; ; txin/sig = ...
-;; ;2. create `subscript` of :prevTxOut/script from
-;; ;  its last :op-codeseparator to the end (or the full script
-;; ;  if there's no :op-codeseparator.
-
-;; (.lastIndexOf [:a :b :c "lol" :d :e] :c)  ; 2
-;; (.lastIndexOf [:a :b :c "lol" :d :e] :xxx)  ; -1
-
-;; (reverse
-;;  (take-while (partial not= :op-codeseparator)
-;;              (reverse [:a :b :c :op-codeseparator :d :e :op-codeseparator :f :g])))
-
-;; (reverse
-;;  (take-while (partial not= :op-codeseparator)
-;;              (reverse [:a :b :c :d :e :f :g])))
-
-;; ;               V       _________________________________
-;; (as-> _
-;;      (take-while (partial not= :op-checksig) _) )
-
-;; (def script [:a :b :op-codesep :c :d :op-checksig :op-codesep :f])
-;; ;(def script [:a :b :c :d :op-checksig :f])
-
-;; (def a (let [script-until-checksig (take-while
-;;                                     (partial not= :op-checksig) script)
-;;              last-codesep-idx (.lastIndexOf
-;;                                script-until-checksig :op-codesep)]
-;;          (if (< -1 last-codesep-idx)
-;;            (drop (inc last-codesep-idx) script)
-;;            ;; Else there are no :codeseps in script
-;;            script)))
-
-
-;; ;; remove all op-codeseps form subscript
-;; (def b (remove (partial = :op-codesep) a))
-
-;; b
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defmethod execute-item :op-x [_ [main alt ctrl]]
-  [main alt ctrl])
+;; (defmethod execute-item :op-x [_ [main alt ctrl]]
+;;   [main alt ctrl])
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defmethod execute-item :op-add [_ [[a b & rest] alt ctrl]]
+(defmethod execute-item :op-add [& [_ [[a b & rest] alt ctrl]]]
   [(conj rest (+ a b)) alt ctrl])
 
 (ann execute (Fn [Script -> ScriptState]
                  [Script ScriptState -> ScriptState]))
 (defn execute
+  ;; - `world` is a map of :txIn/script, :txOut/script, and :txn
+  ;;   used for the few ops that need to access that data.
   ;; - `state` starts as [(list) (list) (list)]
   ;; - if `item` is ctrl-item? (i.e. it can modify ctrl-stack),
   ;;     - then always execute it.
   ;;     - elseif ctrl-stack is :true or nil
   ;;         - execute `item`
   ;;         - else skip item.
-  ([script] (execute script [(list) (list) (list)]))
+  ([script]       (execute script [(list) (list) (list)] {}))
+  ([script world] (execute script [(list) (list) (list)] world))
   ;; Can specify an init-state for testing.
   ;; Or maybe I can even use it to pass in eval'd
   ;; txin/script before txout/script is eval'd in this loop.
-  ([script init-state]
+  ([script init-state world]
       (loop>
           [items :- Script, script
            [main alt ctrl :as state] :- ScriptState, init-state]
         (let [[this-item next-items] (split-head-next items)]
           (if this-item
             (if (ctrl-item? this-item)
-              (recur next-items (execute-item this-item state))
+              (recur next-items
+                     (execute-item this-item state world))
               (if (execute-item? ctrl)
-                (recur next-items (execute-item this-item state))
+                (recur next-items
+                       (execute-item this-item state world))
                 ;; Move on to next item.
                 (recur next-items state)))
             ;; If no more items, return state.

@@ -2,7 +2,8 @@
   (:require [expectations :refer :all]
             [clojure.string :as str]
             [hyzhenhok.codec :refer :all]
-            [hyzhenhok.util :refer :all]))
+            [hyzhenhok.util :refer :all])
+  (:import [java.util Date]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -267,3 +268,113 @@
           :prev-block "0000000000000000000000000000000000000000000000000000000000000000",
           :block-ver 1},
   (decode block-payload-codec (hex->bytes "0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c0101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000")))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Testing experimental changes
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;(decode BlockCodec (hex->bytes (genesis-hex)))
+
+
+(expect "0000000000000000000000000000000000000000000000000000000000000001"
+  (buf->hex
+   (encode HashCodec (hex->bytes "0100000000000000000000000000000000000000000000000000000000000000"))))
+
+(bytes->hex
+ (decode HashCodec
+         (hex->bytes "0000000000000000000000000000000000000000000000000000000000000000")))
+
+(expect "0000000000000000000000000000000000000000000000000000000000000001"
+  (buf->hex
+   (decode HashCodec (hex->bytes "0100000000000000000000000000000000000000000000000000000000000000"))))
+
+;; (let [seconds (-> (Date.) (.getTime) (quot 1000))
+;;       instant (seconds->instant seconds)]
+;;   (assert (= seconds (instant->seconds instant))))
+
+(given [input output] (expect output
+                        (buf->hex (encode VarIntCodec input)))
+  ;; When < 0xfd
+  0 "00"
+  3 "03"
+  (dec 0xfd) "fc"
+
+  ;; When <= 0xffff
+  0xfd "fdfd00"
+  0xffff "fdffff"
+
+  ;; When <= 0xffffffff
+  0xffffffff "feffffffff"
+
+  ;; When > 0xffffffff
+  (inc 0xffffffff) "ff0000000001000000")
+
+(given [input output] (expect output
+                        (buf->hex (encode VarStrCodec input)))
+  ;; < 0xfd
+  "" "00"
+  "a" "0161"
+  "aa" "026161"
+  "aaa" "03616161"
+
+  (str/join (repeat (dec 0xfd) \a))
+  (str "fc" (str/join (repeat (dec 0xfd) "61")))
+
+  ;; <= 0xffff
+  (str/join (repeat 0xfd \a))
+  (str "fdfd00" (str/join (repeat 0xfd "61")))
+
+  ;; TODO: Test rest of the cases
+  )
+
+(expect :testnet3
+  (decode MagicCodec (hex->bytes "0b110907")))
+
+(expect "f9beb4d9"
+  (buf->hex
+   (encode MagicCodec :mainnet)))
+
+(expect "0b110907"
+  (buf->hex
+   (encode MagicCodec :testnet3)))
+
+
+(expect "00000000000000001e8d6829a8a21adc5d38d0a473b144b6765798e61f98bd1d"
+  (bytes->hex (:block/hash
+              (decode BlockHeaderCodec (hex->bytes (str
+                                                    "0100000081cd02ab7e569e8bcd9317e2fe99f2de44d49ab2b8851ba4a308000000000000e320b6c2fffc8d750423db8b1eb942ae710e951ed797f7affc8892b0f1fc122bc7f5d74df2b9441a42a14695" (comment "txnCount byte -->") "00"))))))
+
+(let [seconds (-> (Date.) (.getTime) (quot 1000))
+      instant (seconds->instant seconds)]
+  (assert (= seconds (instant->seconds instant))))
+
+(decode BlockCodec genesis-block)
+
+
+
+(expect  {:block/hash "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+          :txns [
+                 ;; Coinbase txn (txn 0)
+                 {:txn/hash "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
+                  :txn/lockTime 0,
+                  :txn/txOuts [
+                           ;; txout 0
+                           {:txOut/script "4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac",
+                            :txOut/value 5000000000N}],
+                  :txn/txIns [
+                          ;; txin 0
+                          {:txIn/sequence 4294967295,
+                           :txIn/script "04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73",
+                           :prevTxOut {:txOut/idx 4294967295,
+                                       :txn/hash "0000000000000000000000000000000000000000000000000000000000000000"}}
+                          ],
+                  :txn/ver 1}
+                 ],
+          :block/nonce 2083236893,
+          :block/bits "1d00ffff",
+          :block/time (seconds->instant 1231006505,)
+          :block/merkleRoot "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b",
+          :prevBlockHash "0000000000000000000000000000000000000000000000000000000000000000",
+          :block/ver 1},
+  (hexify-structure (decode BlockCodec (hex->bytes "0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c0101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000"))))

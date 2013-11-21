@@ -1,8 +1,8 @@
 # hyzhenhok
 
-A fledgling Bitcoin implementation written in Clojure.
+A highly experimental/unorganized fledgling Bitcoin implementation written in Clojure.
 
-I'm in the middle of porting a less-organized implementation into this somewhat-typed/somewhat-organized codebase.
+Predominantly a test-bed for hilarious abstractions and unfamiliar libraries as I figure things out.
 
 ## Current features so far
 
@@ -12,15 +12,10 @@ I'm in the middle of porting a less-organized implementation into this somewhat-
 - Exposes a blockexplorer.com-like interface for browsing the contents of its db locally (`explorer.clj`)
 - Includes a simple validation stack-machine (`script.clj`)
 
-## Immediate TODOs
+## Current goals
 
 - **Import full blockchain.** - While I've been able to parse every `blkXXXXX.dat` file that I've tried, I haven't yet attempted to parse all of them into the database at once.
 - **Implement OP_CHECKSIG and other non-trival script ops.** - The abstraction in script.clj is pleasant and makes almost all of the ops trivial to implement, but the non-trivial ops need to be implemented to justify the abstraction before moving on.
-
-## Some other goals
-
-- Replicate satoshi-client bugs.
-- Maintain a test-suite that's a union of the suites of other implementations, particularly satoshi-client and BitcoinJ.
 
 ## Prerequisites
 
