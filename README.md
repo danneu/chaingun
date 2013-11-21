@@ -28,7 +28,7 @@ I'll walk through the process of:
 
 1. Downloading and compiling hyzhenhok
 2. Setting up Datomic (database)
-3. Parsing the first 100 blocks of the blockchain into Datomic
+3. Parsing the first 300 blocks of the blockchain into Datomic
 4. Exploring the local blockchain with hyzhenhok's explorer.
 
 Clone the hyzhenhok source :
@@ -57,7 +57,7 @@ You should see output that looks something like:
     Starting datomic:free://localhost:4334/<DB-NAME>, storing data in: data ...
     System started datomic:free://localhost:4334/<DB-NAME>, storing data in: data
 
-(The default config is fine for this 100-block demo.)
+(The default config is fine for this 300-block demo.)
 
 With the Datomic transactor running in another terminal, tell hyzhenhok to seed the db:
 
@@ -69,18 +69,18 @@ You should see this output:
 
     Creating database...
     Creating genesis block...Done.
-    Creating the first 99 post-genesis blocks...
+    Creating the first 299 post-genesis blocks...
     ............................................
     ............................................
     ...........Done.
-    Blocks in database: 100
+    Blocks in database: 300
 
 Launch the local blockchain explorer:
 
     $ java -jar hyzhenhok-standalone.jar explorer
     Launching database explorer at http://localhost:3000/...
 
-You should now be able to open [http://localhost:3000/](http://localhost:3000/) in your browser and browse the first 100 blocks of the Bitcoin network.
+You should now be able to open [http://localhost:3000/](http://localhost:3000/) in your browser and browse the first 300 blocks of the Bitcoin network.
 
 ## Screenshots
 
