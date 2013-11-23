@@ -1,6 +1,6 @@
 # hyzhenhok
 
-A highly experimental/unorganized fledgling Bitcoin implementation written in Clojure.
+A highly experimental/unorganized fledgling Bitcoin implementation written in Clojure. A sandbox for my brain.
 
 Predominantly a test-bed for hilarious abstractions and unfamiliar libraries as I figure things out.
 

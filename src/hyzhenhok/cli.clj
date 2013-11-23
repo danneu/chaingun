@@ -10,8 +10,28 @@
 
 (defmulti execute first)
 
+(defmethod execute "db:delete" [_]
+  (println "Deleting database...")
+  (db/delete-database)
+  (println "Done.")
+  (System/exit 0))
+
+(defmethod execute "db:create" [_]
+  (println "Creating database and schema...")
+  (db/create-database)
+  (println "Done.")
+  (System/exit 0))
+
+(defmethod execute "db:import-dat" [_]
+  (clojure.pprint/pprint (codec/import-dat))
+  (System/exit 0))
+
+;; (defmethod execute "db:seed00000" [_]
+;;   (codec/seed-db)
+;;   (System/exit 0))
+
 (defmethod execute "demo:seed" [_]
-  (codec/seed-db)
+  (codec/seed-db-demo)
   (System/exit 0))
 
 (defmethod execute "explorer" [[_ & [port & _]]]

@@ -158,7 +158,9 @@
     [:li (link-to-blockexplorer-com
           (bytes->hex (:block/hash blk)))]
     [:li (link-to-blockchain-info
-          (bytes->hex (:block/hash blk)))]]))
+          (bytes->hex (:block/hash blk)))]]
+   [:hr]
+   (str "Total blocks: " (db/get-block-count))))
 
 ;; Routes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

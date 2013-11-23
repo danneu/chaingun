@@ -9,7 +9,9 @@
 - Add search to explorer.
 - Create db function for looking up byte-array values instead of reimplementing the `java.util.Arrays/equals` match every time.
 - Create some sort of wrapper/presenter for exposing entity-maps in `hyzhenhok.explorer` where all byte-array values are converted to hex strings so I don't need to manually `bytes->hex` myself.
-- Since the new codec style tries to build entity-map-like structures, take advantage of that in constructors by merging decoded codecs instead of plucking keys a la cart.
+
+- (Nevermind) Since the new codec style tries to build entity-map-like structures, take advantage of that in constructors by merging decoded codecs instead of plucking keys a la cart. Update: I tried this but I like seeing every key in a constructor.
+
 
 ## Some other goals
 

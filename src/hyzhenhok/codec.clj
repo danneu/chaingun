@@ -23,6 +23,12 @@
   [(IPersistentMap Any Any) (Seqable Any)
    -> (IPersistentMap Any Any)])
 
+;; TODO
+;; - Consider a more common ns to move things like genesis-block
+;;   and genesis-hash.
+;; - Split up wire codecs from message/payload codecs.
+;; - Remove the old codec code.
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare genesis-block genesis-hash)
@@ -848,13 +854,10 @@
 
 (defcodec HashCodec
   (compile-frame
-   ;(finite-frame 32 (repeated :byte :prefix :none))
    (finite-block 32)
    ;; Pre-encode (Flip to little endian)
    (fn [bytes-be]
-     (reverse-bytes bytes-be)
-     ;(seq (reverse-bytes bytes-be))
-     )
+     (reverse-bytes bytes-be))
    ;; Post-decode (Flip to big endian)
    (fn [heapbuf-le]
      (reverse-bytes (buf->bytes heapbuf-le)))))
@@ -912,7 +915,6 @@
    (fn [txn-map]
      (assoc txn-map :txn/hash (calc-txn-hash2 txn-map)))))
 
-
 (defcodec BlockCodec
   (compile-frame
    (ordered-map
@@ -960,11 +962,18 @@
     bytes-out))
 
 (defn lazy-blkdat-frames [filename]
-  (gloss.io/lazy-decode-all BlkDatCodec (resource-bytes filename)))
+  (gloss.io/lazy-decode-all BlkDatCodec
+                            (resource-bytes filename)))
 
-(defn seed-db []
+;;(println (count (lazy-blkdat-frames "blk00001.dat")))
+;=> 11272
+
+;;(println (count (lazy-blkdat-frames "blk00090.dat")))
+;=> Insufficient bytes. Looks like its tail is padded with \0 bytes.
+
+(defn seed-db-demo []
   (println "Creating database...")
-  (db/create-db)
+  (db/create-database)
   (print "Creating genesis block...")
   (when (db/create-block
          (decode BlockCodec genesis-block))
@@ -977,8 +986,6 @@
       (print ".") (flush)))
   (println "Done. Blocks in database:" (db/get-block-count)))
 
-;(seed-db)
-
 (defn write-blocks300 []
   (with-open [stream (io/output-stream
                       "resources/blocks300.dat")]
@@ -988,9 +995,159 @@
       (gloss.io/encode-to-stream BlkDatCodec stream blocks)
       (println "Done."))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;(println (count (lazy-blkdat-frames "blk00000.dat")))
+;; The problem is that since blocks and txins have
+;; attributes that point to existing blocks and txouts,
+;; we need to (1) lookup blocks/txouts in the db or
+;; (2) lookup in block->tempid and txout->tempid
+;; maps if it's not in the db (i.e. it only exists
+;; earlier in this datomic-tx).
+;;
+;; Ideally we'd be able to reduce an extended
+;; `d/with` db, but unfortunately
+;; `d/with` doesn't produce the same :db/idxs that the
+;; actual transact will produce.
+;;
+;; I couldn't think of a nice way to do this without
+;; either using atoms or making function signatures
+;; hard to understand, so I used atoms since this
+;; function altogether is already gonna be jokes.
 
+(require '[datomic.api :as d])
+
+(defn blk-dtxs
+  "This function whispers, 'Kill me.'
+
+   Ideally I'd be able to:
+   (reduce (fn [db blk] ... (d/with ...)) blks).
+
+   I wanted a way to be able to construct arbitrary
+   stretches of blocks before committing them. This
+   function can lookup prevBocks and prevTxOuts in
+   both the db and in blocks/txout constructed within
+   it."
+  [db blks]
+  (let [blk->tempid (atom {})
+        txout->tempid (atom {})]
+    (for [blk blks]
+      (let [blk-tempid (db/tempid)]
+        (print ".") (flush)
+        ;; Add this blk's tempid to blk lookup.
+        (swap! blk->tempid
+               conj
+               [(seq (:block/hash blk)) blk-tempid])
+        ;; Construct blk
+        (merge
+         ;; Lookup prevBlock in db or in ->tempid map.
+         ;; TODO: nil should fail during import.
+         (when-let [prev-id
+                    (or (:db/id (db/find-block-by-hash
+                                 db (:prevBlockHash blk)))
+                        (@blk->tempid (seq (:prevBlockHash blk))))]
+           {:block/prevBlock prev-id})
+         {:db/id blk-tempid
+          :block/hash (:block/hash blk)
+          :block/ver (:block/ver blk)
+          :block/merkleRoot (:block/merkleRoot blk)
+          :block/time (:block/time blk)
+          :block/bits (:block/bits blk)
+          :block/nonce (:block/nonce blk)
+          ;; Construct txns
+          :block/txns (map-indexed
+                       (fn [txn-idx txn]
+                         (let [txn-tempid (db/tempid)
+                               ;; We need this in txout
+                               txn-hash (:txn/hash txn)]
+                           {:db/id txn-tempid
+                            :txn/hash txn-hash
+                            :txn/ver (:txn/ver txn)
+                            :txn/lockTime (:txn/lockTime txn)
+                            :txn/idx txn-idx
+                            :txn/txOuts (map-indexed
+                                         (fn [txout-idx txout]
+                                           (let [txout-tempid (db/tempid)]
+                                             ;; Add this txout to txout-tempid
+                                             ;; lookup so txin's constructor can
+                                             ;; link :txIn/prevTxOut to it.
+                                             (swap! txout->tempid
+                                                    conj
+                                                    ;; Gotta remember to seq the
+                                                    ;; bytes for comparison.
+                                                    [{:txn/hash (seq txn-hash)
+                                                      :txOut/idx txout-idx}
+                                                     txout-tempid])
+                                             ;; Construct txOut
+                                             {:db/id txout-tempid
+                                              :txOut/idx txout-idx
+                                              :txOut/value (long (:txOut/value txout))
+                                              :txOut/script (:txOut/script txout)}))
+                                         (:txn/txOuts txn))
+                            :txn/txIns (map-indexed
+                                        (fn [txin-idx txin]
+                                          (let [txin-tempid (db/tempid)
+                                                prev-txnhash (-> txin
+                                                                 :prevTxOut
+                                                                 :txn/hash)
+                                                prev-txoutidx (-> txin
+                                                                  :prevTxOut
+                                                                  :txOut/idx)]
+                                            (merge
+                                             {:db/id txin-tempid
+                                              :txIn/idx txin-idx
+                                              :txIn/sequence (:txIn/sequence txin)
+                                              :txIn/script (:txIn/script txin)}
+                                             (when-let [prev-id
+                                                        (or
+                                                         ;; First lookup in db
+                                                         (db/find-txout-by-hash-and-idx
+                                                          db prev-txnhash prev-txoutidx)
+                                                         ;; Then lookup in txout->tempid
+                                                         (@txout->tempid
+                                                          ;; l0l, gotta remember to seq the
+                                                          ;; bytes.
+                                                          {:txn/hash (seq prev-txnhash)
+                                                           :txOut/idx prev-txoutidx}))]
+                                               (:txIn/prevTxOut prev-id)))))
+                                        (:txn/txIns txn))}))
+                       (:txns blk))})))))
+
+(defn import-dat []
+  ;;(println "Recreating database...")
+  ;;(db/create-database)
+  (let [blk-count (db/get-block-count)
+        per-batch 100]
+    (println "Blocks in database:" blk-count)
+    (println "Transacting...")
+    (let [counter (atom 0)]
+      (reduce (fn [db blk-frame-batch]
+                (let [dtx-batch (blk-dtxs db blk-frame-batch)]
+                  ;; Output every time we're actually saving
+                  ;; blocks to the database.
+                  (println "Transacting"
+                           per-batch
+                           (str " (Total: "
+                                (-> (swap! counter inc)
+                                    (* per-batch)
+                                    (+ blk-count))
+                                ")"))
+                  ;; Accrete the database in each reduction.
+                  (->> (d/transact-async (db/get-conn) dtx-batch)
+                       (deref)
+                       :db-after)))
+              ;; Start off with the persisted database
+              ;; as it is.
+              (db/get-db)
+              ;; blk00000.dat contains 119,965 blocks which
+              ;; takes quite a while to parse and import.
+              ;; This breaks it up into 100 paritions with
+              ;; a simple mechanism for picking back up where
+              ;; it left off.
+              (->> (lazy-blkdat-frames "blk00000.dat")
+                   (map :block)
+                   (drop (- blk-count (mod blk-count per-batch)))
+                   (partition per-batch)))))
+  (println "Blocks in database:" (db/get-block-count)))
 
 ;; Genesis ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1006,6 +1163,7 @@
        (hex->bytes)))
 
 (def genesis-hash
+  "Won't even boot if we can't get this right."
   (let [hash (->> genesis-block
                   (decode BlockCodec)
                   (calc-block-hash2))]

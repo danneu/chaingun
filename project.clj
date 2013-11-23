@@ -4,7 +4,7 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :jvm-opts ["-XX:MaxPermSize=128m"
-             ;"-Xmx1g"
+             "-Xmx1g"
              ;"-Djava.awt.headless=true"
              ]
   :uberjar-name "../hyzhenhok-standalone.jar"

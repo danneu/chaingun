@@ -10,44 +10,44 @@
 ;; Var-int ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(given [input output] (expect output
-                        (buf->hex (encode var-int-codec input)))
-  ;; When < 0xfd
-  0 "00"
-  3 "03"
-  (dec 0xfd) "fc"
+;; (given [input output] (expect output
+;;                         (buf->hex (encode var-int-codec input)))
+;;   ;; When < 0xfd
+;;   0 "00"
+;;   3 "03"
+;;   (dec 0xfd) "fc"
 
-  ;; When <= 0xffff
-  0xfd "fdfd00"
-  0xffff "fdffff"
+;;   ;; When <= 0xffff
+;;   0xfd "fdfd00"
+;;   0xffff "fdffff"
 
-  ;; When <= 0xffffffff
-  0xffffffff "feffffffff"
+;;   ;; When <= 0xffffffff
+;;   0xffffffff "feffffffff"
 
-  ;; When > 0xffffffff
-  (inc 0xffffffff) "ff0000000001000000")
+;;   ;; When > 0xffffffff
+;;   (inc 0xffffffff) "ff0000000001000000")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Var-str ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(given [input output] (expect output
-                        (buf->hex (encode var-str-codec input)))
-  ;; < 0xfd
-  "" "00"
-  "a" "0161"
-  "aa" "026161"
-  "aaa" "03616161"
+;; (given [input output] (expect output
+;;                         (buf->hex (encode var-str-codec input)))
+;;   ;; < 0xfd
+;;   "" "00"
+;;   "a" "0161"
+;;   "aa" "026161"
+;;   "aaa" "03616161"
 
-  (str/join (repeat (dec 0xfd) \a))
-  (str "fc" (str/join (repeat (dec 0xfd) "61")))
+;;   (str/join (repeat (dec 0xfd) \a))
+;;   (str "fc" (str/join (repeat (dec 0xfd) "61")))
 
-  ;; <= 0xffff
-  (str/join (repeat 0xfd \a))
-  (str "fdfd00" (str/join (repeat 0xfd "61")))
+;;   ;; <= 0xffff
+;;   (str/join (repeat 0xfd \a))
+;;   (str "fdfd00" (str/join (repeat 0xfd "61")))
 
-  ;; TODO: Test rest of the cases
-  )
+;;   ;; TODO: Test rest of the cases
+;;   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Services-codec ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

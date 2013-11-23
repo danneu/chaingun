@@ -8,8 +8,7 @@
    [clojure.lang
     IPersistentList
     IPersistentMap
-    IPersistentVector
-    Keyword]))
+    IPersistentVector]))
 
 (set! *warn-on-reflection* false)
 

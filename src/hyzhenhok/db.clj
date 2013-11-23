@@ -11,8 +11,8 @@
    [java.util Date]))
 
 ;; Import settings
-;; (System/setProperty "datomic.peerConnectionTTLMsec" "30000")
-;; (System/setProperty "datomic.objectCacheMax" "256m")
+(System/setProperty "datomic.peerConnectionTTLMsec" "90000")
+(System/setProperty "datomic.objectCacheMax" "128m")
 
 ;; Datomic utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -34,7 +34,7 @@
 
 (def uri "datomic:free://localhost:4334/hyzhenhok")
 
-(defn create-db
+(defn create-database
   "Recreates db with schema, returns db connection."
   []
   (d/delete-database uri)
@@ -47,6 +47,10 @@
 (defn get-conn [] (d/connect uri))
 
 (defn get-db [] (d/db (get-conn)))
+
+(defn delete-database
+  []
+  (d/delete-database uri))
 
 (defn tempid []
   (d/tempid :db.part/user))
@@ -100,17 +104,19 @@
 (defn find-by-eid [eid]
   (find-by (d/db (get-conn)) :db/id eid))
 
-(defn find-block-by-hash [hash]
-  (let [hash-bytes (if (string? hash)
-                     (hex->bytes hash)
-                     hash)]
-    (qe '[:find ?e
-          :in $ ?hash-bytes
-          :where
-          [?e :block/hash ?hash]
-          [(java.util.Arrays/equals
-            ^bytes ?hash ^bytes ?hash-bytes)]]
-        (get-db) hash-bytes)))
+(defn find-block-by-hash
+  ([hash] (find-block-by-hash (get-db) hash))
+  ([db hash]
+     (let [hash-bytes (if (string? hash)
+                        (hex->bytes hash)
+                        hash)]
+       (qe '[:find ?e
+             :in $ ?hash-bytes
+             :where
+             [?e :block/hash ?hash]
+             [(java.util.Arrays/equals
+               ^bytes ?hash ^bytes ?hash-bytes)]]
+           db hash-bytes))))
 
 (defn find-by
   "Returns the unique entity identified by attr and val.
@@ -121,8 +127,9 @@
         :where [?e ?attr ?val]]
       db attr val))
 
-;; Dynamically created in hyzhenhok.codec, but to avoid
+;; Created in hyzhenhok.codec, but to avoid
 ;; circular dependency, hard-code it here for now...
+;; Need to extract part of hyzhenhok.codec into a common ns.
 (def genesis-hash
   (hex->bytes "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"))
 
@@ -134,11 +141,13 @@
 
 (defn get-block-count
   "Returns count of blocks in the db."
-  []
-  (or (only (d/q '[:find (count ?e)
-                   :where [?e :block/hash]]
-                 (d/db (get-conn))))
-      0))
+  ([]
+     (get-block-count (get-db)))
+  ([db]
+     (or (only (d/q '[:find (count ?e)
+                      :where [?e :block/hash]]
+                    db))
+         0)))
 
 (defn find-txn-by-hash
   "Find txn by hash (String or ByteArray)."
@@ -181,25 +190,17 @@
                  [(< ?v ?time)]]
                (get-db) (:block/time block)))))
 
-;; FIXME: ad-hoc function
 (defn coinbase?
-  "Is this raw-txin part of a coinbase txn?
-
-   A coinbase transaction's txin looks like:
-     {...
-      :prev-output {:hash '000000000000000000...',
-                    :idx 4294967295}}
-
-   :prev-output points to a txn/hash and a txOut/idx
-   which are used to set the :txIn/prevTxOut reference.
-   Even though the hash and idx won't exist, this
-   function lets us explicitly handle coinbase outputs."
-  [{:keys [hash]}]
-  (= hash (str/join (repeat 32 \0))))
+  "Non-robust and not sure I use this anymore."
+  [txIn]
+  (java.util.Arrays/equals
+   (-> txIn :prevTxOut :txn/hash) (byte-array 32)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn touch-all [entity]
+(defn touch-all
+  "Non-robust."
+  [entity]
   (->> (d/touch entity)
        (map (fn [[k v]]
               (if (coll? v)
@@ -211,7 +212,9 @@
 ;;        entity maps into maps ready for codec pre-encode.
 (defn map-all
   "Sort of like a recursive touch. I needed it in a few
-   experimental use-cases where I needed map ops on entity-maps."
+   experimental use-cases where I needed map ops on entity-maps.
+
+   Superbly non-robust."
   [entity]
   (->> (d/touch entity)
        (map (fn [[k v]]
@@ -231,8 +234,8 @@
 ;;       (last)
 ;;       (d/touch)))
 
-;; TODO: Support txOuts too
 (defn parent-txn
+  "Find parent-txn for given txIn or txOut entity."
   [txIO]
   (case (some #{:txIn/idx :txOut/idx} (keys txIO))
     :txIn/idx  (first (:txn/_txIns txIO))
@@ -253,49 +256,54 @@
 ;;                                   (blk0-bytes))))
 ;; => 100
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (def progress (atom 0))
+;; Mass-import constructors ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; - Unfortunately, can't just reduce d/with across cstors
+;;   for tempid-lookup since we can't lean on d/with
+;;   creating the same :db/ids that the real d/transact
+;;   will create, so we need specific cstors that'll maintain
+;;   a tempid lookup table. :(
 
-;; (defn mass-import []
-;;   (doseq [blkdat-batch (->> (blk0-frames)
-;;                             (map :block)
-;;                             (remove (fn [blk]
-;;                                       (find-block-by-hash
-;;                                        (:block-hash blk))))
-;;                             (map construct-block-dtx)
-;;                             ;(partition-all 1000)
-;;                             ;(map (partial apply concat))
-;;                             (pmap #(d/transact-async conn %)))]
-;;     @blkdat-batch
-;;     (spit "progress.txt"
-;;           (str (swap! progress inc) \newline)
-;;           :append true))
-;;   (println "DONE"))
+;; (defn imp-construct-txout [idx [tid txOut]]
+;;   [{:db/id tid
+;;     :txOut/idx idx
+;;     :txOut/value (:txOut/value txOut)
+;;     :txOut/script (:txOut/script txOut)}])
 
-;;(mass-import)
+;; (defn imp-construct-txin [idx [tid txOut]]
+;;   [{:db/id eid
+;;     :txOut/idx idx
+;;     :txOut/value (:txOut/value txOut)
+;;     :txOut/script (:txOut/script txOut)}])
 
-;; Debug toys parsed from blk00000.dat
-;; (def toyblk170 (:block (nth (blk0-frames) 170)))
-;; (def toyblk0 (:block (nth (blk0-frames) 0)))
-;; (def the-hash
-;;   "0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9")
-;; @(d/transact conn
-;;              [{:db/id (tempid)
-;;                :txn/hash the-hash
-;;                :txn/txOuts [{:db/id (tempid)
-;;                              :txOut/idx 0}]}])
-;; (pprint (construct-block (d/db conn) toyblk0))
-;; (find-txout-by-hash-and-idx (d/db conn) the-hash 0)
-;; (pprint (construct-block (d/db conn) toyblk170))
+;; (defn imp-construct-txn [idx [tid txn]]
+;;   {:db/id eid
+;;    :txn/hash (:txn/hash txn)
+;;    :txn/txOuts (map-indexed imp-construct-txout (:txn/txOuts txn))
+;;    :txn/txIns (map-indexed imp-construct-txin (:txn/txIns txn))})
 
+;; (defn imp-construct-block [tid blk]
+;;   {:db/id eid
+;;    :block/hash (:block/hash blk)
+;;    ;; Have to lookup in db and then blockhash->tempid if not there
+;;    :block/prevBlock
+;;    :block/txns (map-indexed imp-construct-txn (:txns blk))})
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Deprecate this function in favor of the more-hilarious
+;; constructor hyzhenhok.codec/blk-dtxs.
+;;
+;; This constructor makes the mistake of using `d/with` in
+;; an effort to lookup txouts within the datomic-transaction
+;; which I've found out to be unreliable.
+;;
+;; But it works for the demo for now.
 (defn construct-txns
-  "Run for each txn in :block/txns. Each :txIn/prevTxOut is
-   matched with a txOut that either exists in the database or
-   within a txn constructed earlier in the loop."
   [db raw-txns]
   (loop [db db
          raw-txns raw-txns
@@ -346,19 +354,22 @@
            (conj constructed-txns constructed-txn)
            (inc idx)))))))
 
-(defn construct-block [db eid block]
-  (merge
-   {:db/id eid
-    :block/hash (:block/hash block)
-    :block/ver (:block/ver block)
-    :block/merkleRoot (:block/merkleRoot block)
-    :block/time (:block/time block)
-    :block/bits (:block/bits block)
-    :block/nonce (:block/nonce block)
-    :block/txns (construct-txns db (:txns block))}
-   (when-let [prev-block (find-block-by-hash
-                          (:prevBlockHash block))]
-     {:block/prevBlock (:db/id prev-block)})))
+(defn construct-block
+  ([db block] (construct-block db (tempid) block))
+  ([db eid block]
+     (merge
+      {:db/id eid
+       :block/hash (:block/hash block)
+       :block/ver (:block/ver block)
+       :block/merkleRoot (:block/merkleRoot block)
+       :block/time (:block/time block)
+       :block/bits (:block/bits block)
+       :block/nonce (:block/nonce block)
+       :block/txns (construct-txns db (:txns block))}
+      (when-let [prev-block (find-block-by-hash
+                             db
+                             (:prevBlockHash block))]
+        {:block/prevBlock (:db/id prev-block)}))))
 
 (defn create-block
   "Returns the created block entity-map or nil if
@@ -366,7 +377,7 @@
   [raw-block]
   (when-not (find-block-by-hash (:block/hash raw-block))
     (let [temp-block-eid (tempid)]
-      (let [result (->> [(construct-block (d/db (get-conn))
+      (let [result (->> [(construct-block (get-db)
                                           temp-block-eid
                                           raw-block)]
                         (d/transact (get-conn))
