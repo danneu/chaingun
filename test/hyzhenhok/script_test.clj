@@ -4,6 +4,7 @@
             [hyzhenhok.util :refer :all]
             [clojure.string :as str]))
 
+(expect :sighash-all (extract-hash-type (hex->bytes "aabbcc01")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Script parsing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -215,14 +216,67 @@
 
   ['() '() '()]
 
-;; (let [world {
-;;              :txIn {:txIn/idx 0
-;;                     :txIn/prevTxOut {:txOut/script "lol"}}}])
-;; (expect
-;;     (let [pubkey (hex->bytes "abcd11")
-;;           sig (hex->bytes
-;;                "0bfbcadae145d870428db173412d2d860b9acf5e")]
-;;       (execute [:op-checksig]
-;;                [(list pubkey sig) '() '()]
-;;                {:txIn/idx 0
-;;                 :txIn/prevTxOut {:txOut/script "lol"}})))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Below I'm experimenting with some op-checksig
+;; implementation ideas.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(require '[datomic.api :as d])
+(require '[hyzhenhok.db :as db])
+
+;; (let [world {:txIn {:txIn/idx 0
+;;                     :txIn/prevTxOut {:txOut/script "lol"}}}]
+;;   (let [pubkey (hex->bytes "abcd11")
+;;         sig (hex->bytes
+;;              "0bfbcadae145d870428db173412d2d860b9acf5e")]
+;;     (execute [:op-checksig] [(list pubkey sig) '() '()] world)))
+
+(defn assoc-subscript2 [txn txin-idx subscript]
+  (let [all-txins (:txn/txIns txn)
+        target-txin (first
+                     (filter #(= txin-idx (:txIn/idx %))
+                             all-txins))
+        other-txins (remove #(= txin-idx (:txIn/idx %)) all-txins)]
+    (let [updated-txin (assoc target-txin :txIn/script subscript)
+          updated-txins (conj other-txins updated-txin)]
+      (assoc txn :txn/txIns updated-txins))))
+
+;; TODO: This is where I need a robust, recursive touch-all
+;; function.
+(def subscript-bytes
+(let [txn (db/txn170-1)
+          ;(db/parent-txn (db/toy-txin))
+      ]
+  ;(into {} (:txn/txIns (into {} txn)))
+  (as-> txn _
+        ( clear-txin-scripts _)
+        (assoc-subscript2 _ 0 (byte-array 32))
+        ;(map (fn [[k v]] (class v)) _)
+        ;(db/touch-all _)
+        (update-in _ [:txn/txOuts]
+                   (partial map (comp (partial into {}) d/touch)))
+        (update-in _ [:txn/txIns]
+                   (fn [txins]
+                     (map #(update-in % [:txIn/prevTxOut]
+                                 (partial d/touch))
+                          txins)))
+
+        ;; Couldn't get this to work
+        ;;   {:txncopy _
+        ;;    :hashtype 1}
+        ;;   (hyzhenhok.codec/encode txncopy-codec _)
+        ;; So I'll just add the hashtype bytes myself.
+
+        (hyzhenhok.codec/encode hyzhenhok.codec/TxnCodec _)
+        ;(hyzhenhok.codec/decode hyzhenhok.codec/TxnCodec _)
+        )))
+
+(require '[hyzhenhok.crypto :as crypto])
+
+(let [subscript+hashtype (concat-bytes
+                          (buf->bytes subscript-bytes)
+                          (into-byte-array [1 0 0 0]))]
+  (-> (crypto/double-sha256 subscript+hashtype)
+      bytes->hex)
+  ;(bytes->hex subscript+hashtype)
+  )

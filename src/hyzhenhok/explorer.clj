@@ -63,9 +63,9 @@
        [:tr [:td ":txIn/script"] [:td (bytes->hex
                                         (:txIn/script txin))]]
        [:tr [:td ":txIn/script (parsed):"] [:td (prn-str
-                                       (script/parse
-                                        (bytes->ubytes
-                                         (:txIn/script txin))))]]
+                                                 (script/parse
+                                                  (bytes->ubytes
+                                                   (:txIn/script txin))))]]
        [:tr
         [:td ":txIn/sequence"]
         [:td (:txIn/sequence txin)]]
@@ -74,13 +74,15 @@
         [:td (if-let [prev-txout (:txIn/prevTxOut txin)]
                (let [txn (first (:txn/_txOuts prev-txout))]
                  [:ul
-                  [:li ":txn/hash: " (link-to
+                  [:li ":txn/hash " (link-to
                                       (url "/txns/"
                                            (bytes->hex
                                             (:txn/hash txn)))
-                                      (bytes->hex) (:txn/hash txn))]
-                  [:li ":txOut/idx: " (:txOut/idx prev-txout)]])
-               "N/A (Coinbase)")]]))]
+                                      (bytes->hex (:txn/hash txn)))]
+                  [:li ":txOut/idx " (:txOut/idx prev-txout)]
+                  (when (db/coinbase-txn? txn)
+                    "(Coinbase)")])
+               "--")]]))]
    [:hr]
    [:h2 ":txn/txOuts"]
    [:table

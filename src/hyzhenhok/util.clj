@@ -421,3 +421,9 @@
    ;; Outer
    identity
    m))
+
+(defmacro symp
+  "Print out 'symbol-name: symbol-val' and return symbol-val."
+  [sym]
+  `(do (print (str ~(name sym) ": " (prn-str ~sym)))
+       ~sym))

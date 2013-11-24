@@ -886,14 +886,34 @@
            (assoc _ :block/hash (calc-block-hash2 _))))))
 
 (defcodec TxInCodec
-  (ordered-map
-   ;; Turns into :txIn/prevTxOut (ref).
-   ;; - txOut/idx and txn/hash used to find txOut ref.
-   :prevTxOut     (ordered-map
-                   :txn/hash  HashCodec
-                   :txOut/idx :uint32-le)
-   :txIn/script   ScriptCodec
-   :txIn/sequence :uint32-le))
+  (compile-frame
+   (ordered-map
+    ;; Turns into :txIn/prevTxOut (ref).
+    ;; - txOut/idx and txn/hash used to find txOut ref.
+    :prevTxOut     (ordered-map
+                    :txn/hash  HashCodec
+                    :txOut/idx :uint32-le)
+    :txIn/script   ScriptCodec
+    :txIn/sequence :uint32-le)
+   ;; Pre-encode
+   ;; - :txIn/prevTxOut -> :prevTxOut
+   ;; - It's probably an awful idea to introduce db dependency
+   ;;   during codec encode/decode, but perhaps I can keep it
+   ;;   completely out of the way unless I actually have a
+   ;;   db entity. Alternatively, I can create some db-entity->map
+   ;;   function and leave the db dep there.
+   (fn [txin]
+     (if (:prevTxOut txin)
+       ;; If it already has :prevTxOut, do nothing.
+       txin
+       ;; Else derive :prevTxOut
+       (let [{prev-txout :txIn/prevTxOut} txin
+             txout-idx (:txOut/idx prev-txout)
+             txn-hash (-> prev-txout db/parent-txn :txn/hash)]
+         (assoc txin :prevTxOut {:txn/hash txn-hash
+                                 :txOut/idx txout-idx}))))
+   ;; Post-decode
+   identity))
 
 ;; Txn output
 (defcodec TxOutCodec
@@ -910,8 +930,19 @@
     :txn/txOuts   (repeated TxOutCodec :prefix VarIntCodec)
     :txn/lockTime :uint32-le)
    ;; Pre-encode
-   identity
+   ;; - Sort txIns and txOuts by :idx since order matters.
+   ;;   Note: Of course, if we then decode it again, there
+   ;;   are no :idx keys anymore since they're added during
+   ;;   construction. Although I'm wary of moving db-related
+   ;;   business here, I think I'll experiment with it til
+   ;;   I see how it bites me.
+   (fn [txin]
+     (-> txin
+         (update-in [:txn/txIns] (partial sort-by :txIn/idx))
+         (update-in [:txn/txOuts] (partial sort-by :txOut/idx))))
    ;; Post-decode
+   ;; - As above, consider adding :txIn/idx and :txOut/idx on
+   ;;   decode. That would let me remove it from db constructor.
    (fn [txn-map]
      (assoc txn-map :txn/hash (calc-txn-hash2 txn-map)))))
 
@@ -1016,6 +1047,11 @@
 
 (require '[datomic.api :as d])
 
+;; Gotta differentiate the lingo:
+;; - dtx: Datomic transaction
+;; - txn: Bitcoin transaction
+;; - txin: Bitcoin transaction input
+;; - txout: Bitcoin transaction output
 (defn blk-dtxs
   "This function whispers, 'Kill me.'
 
@@ -1092,29 +1128,34 @@
                                                 prev-txoutidx (-> txin
                                                                   :prevTxOut
                                                                   :txOut/idx)]
-                                            (merge
-                                             {:db/id txin-tempid
-                                              :txIn/idx txin-idx
-                                              :txIn/sequence (:txIn/sequence txin)
-                                              :txIn/script (:txIn/script txin)}
-                                             (when-let [prev-id
-                                                        (or
-                                                         ;; First lookup in db
-                                                         (db/find-txout-by-hash-and-idx
-                                                          db prev-txnhash prev-txoutidx)
-                                                         ;; Then lookup in txout->tempid
-                                                         (@txout->tempid
-                                                          ;; l0l, gotta remember to seq the
-                                                          ;; bytes.
-                                                          {:txn/hash (seq prev-txnhash)
-                                                           :txOut/idx prev-txoutidx}))]
-                                               (:txIn/prevTxOut prev-id)))))
+                                            (let [txin-dtx (merge
+                                                            {:db/id txin-tempid
+                                                             :txIn/idx txin-idx
+                                                             :txIn/sequence (:txIn/sequence txin)
+                                                             :txIn/script (:txIn/script txin)}
+                                                            (when-let [prev-id
+                                                                       (or
+                                                                        ;; First lookup in db
+                                                                        (:db/id (db/find-txout-by-hash-and-idx
+                                                                                 db prev-txnhash prev-txoutidx))
+                                                                        ;; Then lookup in txout->tempid
+                                                                        (@txout->tempid
+                                                                         ;; l0l, gotta remember to seq the
+                                                                         ;; bytes.
+                                                                         {:txn/hash (seq prev-txnhash)
+                                                                          :txOut/idx prev-txoutidx}))]
+                                                              {:txIn/prevTxOut prev-id}))]
+                                              txin-dtx)))
                                         (:txn/txIns txn))}))
                        (:txns blk))})))))
 
+;; TODO: Decode frames ahead of consumption in dtx con so that it's not
+;; each loop doesn't need to wait for
 (defn import-dat []
-  ;;(println "Recreating database...")
-  ;;(db/create-database)
+  (println "Recreating database...")
+  (db/create-database)
+  (println "Creating coinbase txn...")
+  (db/create-coinbase-txn)
   (let [blk-count (db/get-block-count)
         per-batch 100]
     (println "Blocks in database:" blk-count)

@@ -163,6 +163,8 @@
             ^bytes ?hash ^bytes ?given-hash)]]
         (get-db) hash)))
 
+;(hyzhenhok.explorer/show-txn (find-txn-by-hash  "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516"))
+
 (defn find-txout-by-hash-and-idx [db hash idx]
   (let [hash (if (string? hash)
                (hex->bytes hash)
@@ -190,21 +192,25 @@
                  [(< ?v ?time)]]
                (get-db) (:block/time block)))))
 
-(defn coinbase?
-  "Non-robust and not sure I use this anymore."
-  [txIn]
-  (java.util.Arrays/equals
-   (-> txIn :prevTxOut :txn/hash) (byte-array 32)))
+;; Shouldn't be in db ns. There should be some sort
+;; of `models` namespace for functions on entities/map
+;; that don't actually have to interact with db.
+(defn coinbase-txn? [txn]
+  (bytes-equal? (byte-array 32) (:txn/hash txn)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn touch-all
   "Non-robust."
   [entity]
-  (->> (d/touch entity)
+  (->> entity
        (map (fn [[k v]]
+              (println "k v:" k v)
               (if (coll? v)
-                [k (into #{} (map d/touch v))]
+                [k (map #(if (instance? datomic.query.EntityMap v)
+                           (d/touch %)
+                           (touch-all %))
+                        v)]
                 [k v])))
        (into {})))
 
@@ -225,14 +231,32 @@
                 [k v])))
        (into {})))
 
-;; (def toy-txn
-;;   (find-txn-by-hash "828ef3b079f9c23829c56fe86e85b4a69d9e06e5b54ea597eef5fb3ffef509fe"))
+;; First block with a transaction.
+(defn blk170
+  "First mainnet block with a transaction."
+  []
+  (find-block-by-hash "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"))
 
-;; (def toy-txIn
-;;   (-> (find-txn-by-hash "828ef3b079f9c23829c56fe86e85b4a69d9e06e5b54ea597eef5fb3ffef509fe")
-;;       (get-in [:txn/txIns])
-;;       (last)
-;;       (d/touch)))
+(blk170)
+
+(defn txn170-1
+  []
+  (find-txn-by-hash "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16"))
+
+(defn txn728
+  "First mainnet block with a standard transaction (2 inputs)."
+  []
+  (find-txn-by-hash "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516"))
+
+(def get-toy-txn txn728)
+
+(defn get-toy-txin
+  []
+  (->> (txn728)
+       :txn/txIns
+       (filter #(= 1 (:txIn/idx %)))
+       first
+       d/touch))
 
 (defn parent-txn
   "Find parent-txn for given txIn or txOut entity."
@@ -337,7 +361,7 @@
                                :txIn/sequence (:txIn/sequence txin)}
                               ;; :prev-output {:hash "...", :idx 0}
                               ;; We don't care about coinbase outs.
-                              (when-not (coinbase? (:prevTxOut txin))
+                              (when-not (bytes-equal? (byte-array 32) (-> txin :prevTxOut :txn/hash))
                                 ;; And we ignore
                                 (when-let [txout
                                            (find-txout-by-hash-and-idx
@@ -387,3 +411,17 @@
                                                temp-block-eid)]
           ;;(println (class (:db-after result)))
           (d/entity (:db-after result) real-block-eid))))))
+
+
+;; COINBASE TXN
+;; - :txn/hash (byte-array 32)
+;; - :txn/txOuts #{{:txOut/idx 4294967295}}
+(defn create-coinbase-txn
+  "To make txOut serialize/deserialize simpler, all coinbase
+   txns with refer to this txn."
+  []
+  @(d/transact (get-conn)
+     [{:db/id (tempid)
+       :txn/hash (byte-array 32)
+       :txn/txOuts [{:db/id (tempid)
+                     :txOut/idx 4294967295}]}]))

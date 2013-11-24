@@ -485,13 +485,28 @@
 
 (defn clear-txin-script
   "Replaces :txIn/script with empty-byte [B."
-  [txIn]
-  (update-in txIn [:txIn/script] (constantly (byte-array 1))))
+  [txin]
+  (-> (into {} txin)
+      (update-in [:txIn/script] (constantly (byte-array 1)))))
 
 (defn clear-txin-scripts
   "Replaces all :txIn/script in txn with empty-byte [B."
   [txn]
-  (update-in txn [:txn/txIns] (partial map clear-txin-script)))
+  (-> (into {} txn)
+      (update-in [:txn/txIns] (partial map clear-txin-script))))
+
+(defn assoc-subscript
+  "Updates the txIn at given idx with the given subscript.
+   Returns updated txn."
+  [txn txin-idx subscript]
+  (let [all-txins (:txn/txIns txn)
+        target-txin (first
+                     (filter #(= txin-idx (:txIn/idx %))
+                             all-txins))
+        other-txins (remove #(= txin-idx (:txIn/idx %)) all-txins)]
+    (let [updated-txin (assoc target-txin :txIn/script subscript)
+          updated-txins (conj other-txins updated-txin)]
+      (assoc  txn :txn/txIns updated-txins))))
 
 ;; Ad hoc codec to serialize the cleared txn with a hashtype
 ;; appended to the end as part of checksig process.
@@ -504,12 +519,17 @@
   [& [_
       [[pub-hash sig+hashcode & rest] alt ctrl]
       {:keys [txn txIn]}]]
-  (let [txIn-idx (:txIn/idx txIn)
+  (let [txn (db/parent-txn txIn)
+        txIn-idx (:txIn/idx txIn)
         hashtype (extract-hash-type sig+hashcode)
         sig (drop-last-bytes 1 sig+hashcode)
         ;; TODO: :op-codeseparators. For now, use full script.
         subscript (-> (:txIn/prevTxOut txIn)
                       (:txOut/script))]
+    (symp txIn-idx)
+    (symp hashtype)
+    (symp sig)
+    (symp subscript)
     (let [txncopy {:txncopy (-> (clear-txin-scripts txn)
                                 (assoc-in
                                  [:txn/txIns txIn-idx :txIn/script]
@@ -517,8 +537,7 @@
                    :hashtype hashtype}]
       (let [txncopy-bytes (codec/encode txncopy-codec txncopy)
             txncopy-hash (crypto/double-sha256 txncopy-bytes)]
-        txncopy-hash
-        [alt alt alt]))))
+        txncopy-hash))))
 
 ;; (codec/encode txncopy-codec
 ;;               {:txncopy  db/toy-txn
@@ -545,8 +564,6 @@
 ;;   (into {} (datomic.api/touch (db/parent-txn db/txIn-toy)))
 ;;   :hashtype 1})
 
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -555,7 +572,6 @@
 ;; (defmethod execute-item :op-x [_ [main alt ctrl]]
 ;;   [main alt ctrl])
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 (defmethod execute-item :op-add [& [_ [[a b & rest] alt ctrl]]]
   [(conj rest (+ a b)) alt ctrl])
