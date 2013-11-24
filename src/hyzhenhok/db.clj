@@ -235,9 +235,9 @@
 (defn blk170
   "First mainnet block with a transaction."
   []
-  (find-block-by-hash "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"))
-
-(blk170)
+  (-> "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"
+      find-block-by-hash
+      d/touch))
 
 (defn txn170-1
   []
@@ -246,7 +246,9 @@
 (defn txn728
   "First mainnet block with a standard transaction (2 inputs)."
   []
-  (find-txn-by-hash "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516"))
+  (-> "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516"
+      find-txn-by-hash
+      d/touch))
 
 (def get-toy-txn txn728)
 

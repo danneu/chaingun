@@ -515,54 +515,88 @@
    :txncopy codec/TxnCodec
    :hashtype :uint32-le))
 
+;; (defmethod execute-item :op-checksig
+;;   [& [_
+;;       [[pub-hash sig+hashcode & rest] alt ctrl]
+;;       {:keys [txn txIn]}]]
+;;   (let [txn (db/parent-txn txIn)
+;;         txIn-idx (:txIn/idx txIn)
+;;         hashtype (extract-hash-type sig+hashcode)
+;;         sig (drop-last-bytes 1 sig+hashcode)
+;;         ;; TODO: :op-codeseparators. For now, use full script.
+;;         subscript (-> (:txIn/prevTxOut txIn)
+;;                       (:txOut/script))]
+;;     (symp txIn-idx)
+;;     (symp hashtype)
+;;     (symp sig)
+;;     (symp subscript)
+;;     (let [txncopy {:txncopy (-> (clear-txin-scripts txn)
+;;                                 (assoc-in
+;;                                  [:txn/txIns txIn-idx :txIn/script]
+;;                                  subscript))
+;;                    :hashtype hashtype}]
+;;       (let [txncopy-bytes (codec/encode txncopy-codec txncopy)
+;;             txncopy-hash (crypto/double-sha256 txncopy-bytes)]
+;;         txncopy-hash))))
+
+(defn touch-txncopy
+  "Manually d/touch the child-entities until I generalize some
+   touch-all (or map-all) function that actually works.
+   I need to do this because EntityMaps are not acutally IMaps,
+   so I need to `d/touch` and `into {}` recursively so that
+   Gloss can serialize it."
+  [txn]
+  (-> txn
+      (update-in [:txn/txOuts]
+                 (partial map (comp (partial into {}) d/touch)))
+      (update-in [:txn/txIns]
+                 (fn [txins]
+                   (map (fn [txin]
+                          (update-in txin
+                                     [:txIn/prevTxOut]
+                                     (partial d/touch)))
+                        txins)))))
+
 (defmethod execute-item :op-checksig
   [& [_
       [[pub-hash sig+hashcode & rest] alt ctrl]
-      {:keys [txn txIn]}]]
-  (let [txn (db/parent-txn txIn)
-        txIn-idx (:txIn/idx txIn)
+      {:keys [txin]}]]
+  (let [txn (db/parent-txn txin)
+        txin-idx (:txIn/idx txin)
         hashtype (extract-hash-type sig+hashcode)
         sig (drop-last-bytes 1 sig+hashcode)
         ;; TODO: :op-codeseparators. For now, use full script.
-        subscript (-> (:txIn/prevTxOut txIn)
+        subscript (-> (:txIn/prevTxOut txin)
                       (:txOut/script))]
-    (symp txIn-idx)
-    (symp hashtype)
-    (symp sig)
-    (symp subscript)
-    (let [txncopy {:txncopy (-> (clear-txin-scripts txn)
-                                (assoc-in
-                                 [:txn/txIns txIn-idx :txIn/script]
-                                 subscript))
-                   :hashtype hashtype}]
-      (let [txncopy-bytes (codec/encode txncopy-codec txncopy)
-            txncopy-hash (crypto/double-sha256 txncopy-bytes)]
-        txncopy-hash))))
+    ;; (symp txIn-idx)
+    ;; (symp hashtype)
+    ;; (symp sig)
+    ;; (symp subscript)
+    (let [txncopy (as-> txn _
+                        ;; Set all txIn/script to (byte 0).
+                        (clear-txin-scripts _)
+                        ;; Set this txIn/script to subscript.
+                        (assoc-subscript _ txin-idx subscript)
+                        ;; d/touch and {} it so we can serialize.
+                        (touch-txncopy _))]
+      (let [txncopy-bytes (codec/encode codec/TxnCodec txncopy)
+            ;hashcode (codec/encode HashTypeCodec hashtype)
+            txncopy+hashtype (concat-bytes
+                              (buf->bytes txncopy-bytes)
+                              (into-byte-array [1 0 0 0]))
+            ;txncopy-bytes (codec/encode txncopy-codec txncopy)
+            txncopy-hash (crypto/double-sha256 txncopy+hashtype)]
+        (bytes->hex txncopy-hash)))))
 
-;; (codec/encode txncopy-codec
-;;               {:txncopy  db/toy-txn
-;;                :hashtype 1})
-
-;; (db/map-all db/toy-txn)
-
-;; (:txn/txOuts (db/touch-all db/toy-txn))
-
-;; (codec/encode codec/txIn-kodec db/toy-txIn)
-
-
-;; (as-> (db/touch-all db/toy-txn) _
-;;       (update-in _ [:txn/txIns] #(sort-by :txIn/idx %))
-;;       (update-in _ [:txn/txOuts] #(sort-by :txOut/idx %))
-;;       ;(codec/encode codec/txn-kodec _)
-;;       )
+(require '[hyzhenhok.keyx :as key])
 
 
-;; (gloss.io/encode
-;;  txncopy-codec
-;;  ;; txncopy
-;;  {:txncopy
-;;   (into {} (datomic.api/touch (db/parent-txn db/txIn-toy)))
-;;   :hashtype 1})
+;; pay-to-pubkey [<pubkey> op-checksig]
+;; pay-to-address  [... ... <pubkey> op-equalverify op-checksig]
+
+;; (execute-item :op-checksig
+;;               ['() '() '()]
+;;               {:txin _})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -608,3 +642,37 @@
                 (recur next-items state)))
             ;; If no more items, return state.
             state)))))
+
+118 "76" :op-dup
+169 "a9" :op-hash160
+136 "88" :op-equalverify
+172 "ac" :op-checksig
+
+(bytes->hex (byte-array [ (unchecked-byte 172)]))
+
+;; http://blockexplorer.com/testnet/tx/c0248251948a779025c9c541be4c45fbebeda6e11b3756c94f868f6d6cab994a#o1
+;; OP_DUP OP_HASH160 405b4f1b2bb8fd6f2454552a1183071e7189eeaf OP_EQUALVERIFY OP_CHECKSIG
+;; Output to mmPEvbJiY999qdDXCMfTefJmHuspzzVN2w
+
+(bytes->hex (byte-array [(byte 21)]))
+
+(parse
+ (hex->ubytes
+  "76a915405b4f1b2bb8fd6f2454552a1183071e7189eeaf88ac"))
+
+;; Redeemed in input:
+;; - :txn/hash
+;; 5545c832836efd03a9433783543e1bbc8640330a2197d93def5cc776674d0017
+;; - :txIn/idx 1
+;; - :txIn/script
+;; 3045022100c135719710fa2c1025d4a54dde2e5aee3eab78ffc3135bc2088f6097c1be0323022062f746d75de3c5072397abdee50286e14e923cdc49a5325e99fd425c7c00b31001 02cfde38ea95953b07bf92eb12d95f85c9ab5e471a23ee3b8ee060eda6ebfff40f
+
+;; "3045022100c135719710fa2c1025d4a54dde2e5aee3eab78ffc3135bc2088f6097c1be0323022062f746d75de3c5072397abdee50286e14e923cdc49a5325e99fd425c7c00b31001"
+;; sig+hashcode (72 bytes)
+
+;; (require '[hyzhenhok.keyx :as key])
+
+;; (-> "02cfde38ea95953b07bf92eb12d95f85c9ab5e471a23ee3b8ee060eda6ebfff40f"
+;;     (key/->pubkey)
+;;     (key/->address :testnet3))
+;; ;; pubhash (33 bytes)
