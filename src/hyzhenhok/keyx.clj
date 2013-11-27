@@ -347,7 +347,7 @@
 (defn verify [data sig ^bytes pub]
   (let [signer (ECDSASigner.)
         pub-params (ECPublicKeyParameters.
-                    (.decodePoint curve/ec-curve (:base pub))
+                    (.decodePoint curve/ec-curve pub)
                     curve/ec-params)]
     (.init signer false pub-params)
     (let [sig' (if (map? sig)

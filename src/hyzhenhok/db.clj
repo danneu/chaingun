@@ -14,6 +14,20 @@
 (System/setProperty "datomic.peerConnectionTTLMsec" "90000")
 (System/setProperty "datomic.objectCacheMax" "128m")
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; (d/q '[:find ?e
+;;        :where
+;;        [?e :block/hash]
+;;        []])
+
+(defn parent-txn
+  "Find parent-txn for given txIn or txOut entity."
+  [txIO]
+  (case (some #{:txIn/idx :txOut/idx} (keys txIO))
+    :txIn/idx  (first (:txn/_txIns txIO))
+    :txOut/idx (first (:txn/_txOuts txIO))))
+
 ;; Datomic utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn read-all
@@ -52,8 +66,10 @@
   []
   (d/delete-database uri))
 
-(defn tempid []
+(defn gen-tempid []
   (d/tempid :db.part/user))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn only
   "Returns the only item from a query result"
@@ -149,6 +165,14 @@
                     db))
          0)))
 
+(defn get-block-count2
+  ([] (get-block-count2 (get-db)))
+  ([db]
+     (let [count (->> (d/datoms db :avet :block/hash)
+                      (d/q '[:find (count ?e) :where [?e]])
+                      ffirst)]
+       (or count 0))))
+
 (defn find-txn-by-hash
   "Find txn by hash (String or ByteArray)."
   [hash]
@@ -198,46 +222,13 @@
 (defn coinbase-txn? [txn]
   (bytes-equal? (byte-array 32) (:txn/hash txn)))
 
+(defn get-prev-block-hash [block]
+  {:pre [(instance? datomic.query.EntityMap block)]
+   :post [(byte-array? %)]}
+  (-> (:block/prevBlock block)
+      :block/hash))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn touch-all
-  "Non-robust."
-  [entity]
-  (->> entity
-       (map (fn [[k v]]
-              (println "k v:" k v)
-              (if (coll? v)
-                [k (map #(if (instance? datomic.query.EntityMap v)
-                           (d/touch %)
-                           (touch-all %))
-                        v)]
-                [k v])))
-       (into {})))
-
-;; FIXME: I need to write a function that turns (nested)
-;;        entity maps into maps ready for codec pre-encode.
-(defn map-all
-  "Sort of like a recursive touch. I needed it in a few
-   experimental use-cases where I needed map ops on entity-maps.
-
-   Superbly non-robust."
-  [entity]
-  (->> (d/touch entity)
-       (map (fn [[k v]]
-              (if (coll? v)
-                [k (into #{} (map (comp #(into {} %)
-                                        d/touch)
-                                  v))]
-                [k v])))
-       (into {})))
-
-;; First block with a transaction.
-(defn blk170
-  "First mainnet block with a transaction."
-  []
-  (-> "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"
-      find-block-by-hash
-      d/touch))
 
 (defn txn170-1
   []
@@ -260,12 +251,59 @@
        first
        d/touch))
 
-(defn parent-txn
-  "Find parent-txn for given txIn or txOut entity."
-  [txIO]
-  (case (some #{:txIn/idx :txOut/idx} (keys txIO))
-    :txIn/idx  (first (:txn/_txIns txIO))
-    :txOut/idx (first (:txn/_txOuts txIO))))
+;; First block with a transaction.
+(defn blk170
+  "First mainnet block with a transaction."
+  []
+  (-> "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"
+      find-block-by-hash
+      d/touch))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Raw index lookup
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn find-blk-by-hash2
+  "60x faster than a naive datalog query."
+  ([hash] (find-blk-by-hash2 (get-db) hash))
+  ([db hash]
+      (->> (if (string? hash) (hex->bytes hash) hash)
+           (d/datoms db :avet :block/hash)
+           (d/q '[:find ?e :where [?e _]])
+           ffirst
+           (d/entity db))))
+
+(defn find-txn-by-hash2
+  "60x faster than a naive datalog query."
+  ([hash] (find-txn-by-hash2 (get-db) hash))
+  ([db hash]
+     (->> (if (string? hash) (hex->bytes hash) hash)
+          (d/datoms db :avet :txn/hash)
+          (d/q '[:find ?e :where [ ?e _]])
+          ffirst
+          (d/entity db))))
+
+(defn find-txout-by-hash-and-idx2
+  "60x faster than a naive datalog query."
+  ([hash idx]
+     (find-txout-by-hash-and-idx2 (get-db) hash idx))
+  ([db hash idx]
+     (->> (find-txn-by-hash2 hash)
+          :txn/txOuts
+          (filter #(= idx (:txOut/idx %)))
+          first)))
+
+;; (def original (d/entity (get-db) 17592186654920))
+
+;; (-> (d/touch original)
+;;     :txn/hash
+;;     bytes->hex)
+
+;; ;; "e3bf3d07d4b0375638d5f1db5255fe07ba2c4cb067cd81b84ee974b6585fb468"
+
+
+;; 17592186654920
+;; 17592186656361
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -342,14 +380,14 @@
         ;; If there's another raw-txn, then we construct
         ;; another txn.
         (let [constructed-txn
-              {:db/id (tempid)
+              {:db/id (gen-tempid)
                :txn/idx idx
                :txn/hash (:txn/hash raw-txn)
                :txn/ver (:txn/ver raw-txn)
                :txn/lockTime (:txn/lockTime raw-txn)
                :txn/txOuts (map-indexed
                             (fn [idx txout]
-                              {:db/id (tempid)
+                              {:db/id (gen-tempid)
                                :txOut/idx idx
                                :txOut/value (long (:txOut/value txout))
                                :txOut/script (:txOut/script txout)})
@@ -357,7 +395,7 @@
                :txn/txIns (map-indexed
                            (fn [idx txin]
                              (merge
-                              {:db/id (tempid)
+                              {:db/id (gen-tempid)
                                :txIn/idx idx
                                :txIn/script (:txIn/script txin)
                                :txIn/sequence (:txIn/sequence txin)}
@@ -381,7 +419,7 @@
            (inc idx)))))))
 
 (defn construct-block
-  ([db block] (construct-block db (tempid) block))
+  ([db block] (construct-block db (gen-tempid) block))
   ([db eid block]
      (merge
       {:db/id eid
@@ -402,7 +440,7 @@
    a block with this hash already exists."
   [raw-block]
   (when-not (find-block-by-hash (:block/hash raw-block))
-    (let [temp-block-eid (tempid)]
+    (let [temp-block-eid (gen-tempid)]
       (let [result (->> [(construct-block (get-db)
                                           temp-block-eid
                                           raw-block)]
@@ -423,7 +461,7 @@
    txns with refer to this txn."
   []
   @(d/transact (get-conn)
-     [{:db/id (tempid)
+     [{:db/id (gen-tempid)
        :txn/hash (byte-array 32)
-       :txn/txOuts [{:db/id (tempid)
+       :txn/txOuts [{:db/id (gen-tempid)
                      :txOut/idx 4294967295}]}]))

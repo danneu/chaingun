@@ -5,6 +5,7 @@
    [clojure.string :as str]
    [gloss.io]
    [gloss.core]
+   [criterium.core]
    [clojure.core.typed :refer :all])
   (:import
    [clojure.lang BigInt Ratio IPersistentMap IPersistentVector]
@@ -14,6 +15,12 @@
    [java.util Arrays Random]
    [java.security SecureRandom]
    [java.nio ByteBuffer]))
+
+(def pprint clojure.pprint/pprint)
+
+(def #^{:macro true} bench #'criterium.core/bench)
+
+(def #^{:macro true} quick-bench #'criterium.core/quick-bench)
 
 ;; Global types
 
@@ -427,3 +434,34 @@
   [sym]
   `(do (print (str ~(name sym) ": " (prn-str ~sym)))
        ~sym))
+
+;; Debug ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; (defn hexifying-walk
+;;   "Walks a datastructure converting byte-arrays
+;;    into hex-strings to make testing/debug easier."
+;;   [thing]
+;;   (clojure.walk/walk
+;;    (fn [[k v]]
+;;      (println k v)
+;;      (cond
+;;       (byte-array? v) [k (bytes->hex v)]
+;;       (map? v) [k (hexifying-walk v)]
+;;       (coll? v) [k (map hexifying-walk v)]
+;;       :else [k v]))
+;;    #(into {} %)
+;;    thing))
+
+(defn hexifying-walk
+  "Walks a datastructure converting byte-arrays
+   into hex-strings to make testing/debug easier."
+  [thing]
+  (clojure.walk/walk
+   (fn [[k v]]
+     (cond
+      (byte-array? v) [k (bytes->hex v)]
+      (map? v) [k (hexifying-walk v)]
+      (coll? v) [k (map hexifying-walk v)]
+      :else [k v]))
+   #(into {} %)
+   thing))

@@ -2,6 +2,7 @@
   (:use [hiccup core def element form page util])
   (:require [hyzhenhok.db :as db]
             [hyzhenhok.util :refer :all]
+            [hyzhenhok.script :as script]
             [compojure.core :refer :all]
             [compojure.handler :as handler]
             [compojure.route :as route]
@@ -38,7 +39,6 @@
 ;; Templates ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; While it's not quite ready, I can show scripts in parsed form.
-(require '[hyzhenhok.script :as script])
 
 (defn show-txn [txn]
   (html

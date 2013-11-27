@@ -3,6 +3,7 @@
    [hyzhenhok.util :refer :all]
    [hyzhenhok.db :as db]
    [hyzhenhok.codec :as codec]
+   [hyzhenhok.codec2 :as codec2]
    [hyzhenhok.explorer :as explorer])
   (:gen-class))
 
@@ -23,9 +24,12 @@
   (System/exit 0))
 
 (defmethod execute "db:import-dat" [_]
-  (clojure.pprint/pprint (codec/import-dat))
+  (codec/import-dat)
   (System/exit 0))
 
+(defmethod execute "db:import-dat2" [_]
+  (codec2/import-dat)
+  (System/exit 0))
 ;; (defmethod execute "db:seed00000" [_]
 ;;   (codec/seed-db)
 ;;   (System/exit 0))

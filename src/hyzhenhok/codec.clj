@@ -3,6 +3,8 @@
    [hyzhenhok.util :refer :all]
    [hyzhenhok.crypto :as crypto]
    [clojure.java.io :as io]
+   [datomic.api :as d]
+   [clojure.java.io :as io]
    [gloss.io :refer :all
     :exclude [contiguous encode decode]]
    [gloss.core :refer :all :exclude [byte-count]]
@@ -946,6 +948,29 @@
    (fn [txn-map]
      (assoc txn-map :txn/hash (calc-txn-hash2 txn-map)))))
 
+;; (defcodec BlockCodec
+;;   (compile-frame
+;;    (ordered-map
+;;     :block/ver         :uint32-le
+;;     :prevBlockHash     HashCodec
+;;     :block/merkleRoot  HashCodec
+;;     :block/time        :uint32-le
+;;     :block/bits        BitsCodec
+;;     :block/nonce       :uint32-le
+;;     :txns              (repeated TxnCodec :prefix VarIntCodec))
+;;    ;; Pre-encode
+;;    (fn [block]
+;;      (-> block
+;;          (update-in [:block/time] (partial instant->seconds))))
+;;    ;; Post-decode
+;;    (fn [block]
+;;      (as-> block _
+;;            (update-in _ [:block/time]
+;;                       (partial seconds->instant))
+;;            (assoc _ :block/hash (calc-block-hash2 _))
+;;            ;; :time Long -> :block/time Date
+;;            ))))
+
 (defcodec BlockCodec
   (compile-frame
    (ordered-map
@@ -955,10 +980,19 @@
     :block/time        :uint32-le
     :block/bits        BitsCodec
     :block/nonce       :uint32-le
-    :txns              (repeated TxnCodec :prefix VarIntCodec))
+    :block/txns        (repeated TxnCodec :prefix VarIntCodec))
    ;; Pre-encode
    (fn [block]
-     (-> block
+     ;; To make this work on both entity-maps (from db) and
+     ;; regular maps, if this is an entity-map, we get the
+     ;; parent block-hash from its prev-block ref pointer.
+     ;; If this block map isn't from the db, then it should
+     ;; already have :prevBlockHash.
+     (-> (if (:block/prevBlockHash block)
+           block
+           (assoc (into {} block)
+                  :prevBlockHash
+                  (db/get-prev-block-hash block)))
          (update-in [:block/time] (partial instant->seconds))))
    ;; Post-decode
    (fn [block]
@@ -1045,8 +1079,6 @@
 ;; hard to understand, so I used atoms since this
 ;; function altogether is already gonna be jokes.
 
-(require '[datomic.api :as d])
-
 ;; Gotta differentiate the lingo:
 ;; - dtx: Datomic transaction
 ;; - txn: Bitcoin transaction
@@ -1067,7 +1099,7 @@
   (let [blk->tempid (atom {})
         txout->tempid (atom {})]
     (for [blk blks]
-      (let [blk-tempid (db/tempid)]
+      (let [blk-tempid (db/gen-tempid)]
         (print ".") (flush)
         ;; Add this blk's tempid to blk lookup.
         (swap! blk->tempid
@@ -1092,7 +1124,7 @@
           ;; Construct txns
           :block/txns (map-indexed
                        (fn [txn-idx txn]
-                         (let [txn-tempid (db/tempid)
+                         (let [txn-tempid (db/gen-tempid)
                                ;; We need this in txout
                                txn-hash (:txn/hash txn)]
                            {:db/id txn-tempid
@@ -1102,7 +1134,7 @@
                             :txn/idx txn-idx
                             :txn/txOuts (map-indexed
                                          (fn [txout-idx txout]
-                                           (let [txout-tempid (db/tempid)]
+                                           (let [txout-tempid (db/gen-tempid)]
                                              ;; Add this txout to txout-tempid
                                              ;; lookup so txin's constructor can
                                              ;; link :txIn/prevTxOut to it.
@@ -1121,7 +1153,7 @@
                                          (:txn/txOuts txn))
                             :txn/txIns (map-indexed
                                         (fn [txin-idx txin]
-                                          (let [txin-tempid (db/tempid)
+                                          (let [txin-tempid (db/gen-tempid)
                                                 prev-txnhash (-> txin
                                                                  :prevTxOut
                                                                  :txn/hash)
@@ -1192,8 +1224,6 @@
 
 ;; Genesis ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(require '[clojure.java.io :as io])
-
 (def genesis-block
   "Ship with the genesis block, the one block we can trust
    without verification. Every other block chains back
@@ -1212,3 +1242,98 @@
              hash
              (hex->bytes "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f")))
     hash))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; hyzhenhok.codec is becoming a massive junk drawer.
+;; I really need to reorganize this once i make the
+;; kind of progress i'll be happy with.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn get-entity-type [m]
+  (cond
+   (:txIn/idx m)  :txin
+   (:txOut/idx m) :txout
+   (:txn/ver m)   :txn
+   (:block/ver m) :block))
+
+(defn codec-lookup [ent-type]
+  (case ent-type
+    :txin TxInCodec
+    :txout TxOutCodec
+    :txn TxnCodec
+    :block BlockCodec))
+(defn encode-entity [m]
+  (-> (get-entity-type m)
+      (codec-lookup)
+      (encode m)))
+
+(defn decode-entity [ent-type m]
+  (-> (codec-lookup ent-type)
+      (decode m)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; === touch-all ===
+;;
+;; The intent of this touch-all function is to expand
+;; entity-maps into real persistent maps so that
+;; entity-maps can be used with anything that expects
+;; a map.
+;;
+;; In particular, I want to be able to do a
+;; [Gloss serialize]<->[DB entity-map] round-trip as easily
+;; as possible for now.
+
+;; (defmulti touch-all get-entity-type)
+
+;; (defmethod touch-all :txin [m]
+;;   (-> (into {} m)
+;;       ;; Expand :txIn/prevTxOut
+;;       (update-in [:txIn/prevTxOut]
+;;                  (partial (comp d/touch)))))
+
+;; (defmethod touch-all :txn [m]
+;;   (-> (into {} m)
+;;       ;; Expand :txn/txIns
+;;       (update-in [:txn/txIns]
+;;                  ;(partial (comp (partial into {})))
+;;                  (partial map touch-all)
+;;                  )
+;;       ;; Expand :txn/txOuts
+;;       (update-in [:txn/txOuts]
+;;                  (partial map (comp (partial into {}))))))
+
+;; (encode (touch-all (get-toy-txn)))
+
+;; (decode :txn (encode (touch-all (get-toy-txn))))
+
+;; (defmethod touch-all :block [m]
+;;   (-> (into {} m)
+;;       ;; Expand :block/prevBlock
+;;       (update-in [:block/prevBlock]
+;;                  (partial (comp (partial into {}) d/touch)))
+;;       ;; Expand :block/txns
+;;       (update-in [:block/txns]
+;;                  (partial map (comp touch-all d/touch))
+;;                  )))
+
+;; (-> (into {} (d/touch (blk170)))
+;;     (update-in [:block/prevBlock]
+;;                (partial (comp (partial into {}) d/touch)))
+;;     ;:block/prevBlock
+;;     (update-in [:block/txns]
+;;                identity
+;;                ;#(map touch-all %)
+;;                ))
+
+;; (get-prev-block-hash (blk170))
+
+;; (encode (blk170))
+
+;; (touch-all (blk170))
+
+;; (encode (touch-all (blk170)))

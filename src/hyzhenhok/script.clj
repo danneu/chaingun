@@ -2,7 +2,10 @@
   (:require
    [hyzhenhok.util :refer :all]
    [hyzhenhok.crypto :as crypto]
-   [hyzhenhok.codec :as codec]
+   [hyzhenhok.codec2 :as codec]
+   [hyzhenhok.keyx :as key]
+   [hyzhenhok.db :as db]
+   [datomic.api :as d]
    [clojure.core.typed :refer :all])
   (:import
    [clojure.lang
@@ -470,10 +473,6 @@
 ;;   pubkey for the prev :txout/script they're trying to spend,
 ;;   that txin is considered valid.
 
-(require '[hyzhenhok.codec :as codec])
-(require '[hyzhenhok.db :as db])
-(require '[datomic.api :as d])
-
 (defn extract-hash-type [sig]
   (case (ubyte (last sig))
     0x01 :sighash-all
@@ -486,126 +485,71 @@
 (defn clear-txin-script
   "Replaces :txIn/script with empty-byte [B."
   [txin]
-  (-> (into {} txin)
+  ;(into {} txin)
+  (-> (codec/touch-all txin)
       (update-in [:txIn/script] (constantly (byte-array 1)))))
 
 (defn clear-txin-scripts
   "Replaces all :txIn/script in txn with empty-byte [B."
   [txn]
-  (-> (into {} txn)
+  ;(into {} txn)
+  (-> (codec/touch-all txn)
       (update-in [:txn/txIns] (partial map clear-txin-script))))
 
 (defn assoc-subscript
-  "Updates the txIn at given idx with the given subscript.
+  "Updates the `txn`'s txIn at given `txnin-idx`
+   with the given `subscript` bytes.
    Returns updated txn."
   [txn txin-idx subscript]
   (let [all-txins (:txn/txIns txn)
-        target-txin (first
-                     (filter #(= txin-idx (:txIn/idx %))
-                             all-txins))
-        other-txins (remove #(= txin-idx (:txIn/idx %)) all-txins)]
-    (let [updated-txin (assoc target-txin :txIn/script subscript)
+        ;; Pluck out txIn we're modifying
+        target-txin (-> (filter #(= txin-idx (:txIn/idx %))
+                                all-txins)
+                        (first))
+        other-txins (remove #(= txin-idx (:txIn/idx %))
+                            all-txins)]
+    (let [;; Update the txIn
+          updated-txin (-> (codec/touch-all target-txin)
+                           (assoc :txIn/script subscript))
+          ;; Conj it back in to the other txIns
           updated-txins (conj other-txins updated-txin)]
-      (assoc  txn :txn/txIns updated-txins))))
-
-;; Ad hoc codec to serialize the cleared txn with a hashtype
-;; appended to the end as part of checksig process.
-(gloss.core/defcodec txncopy-codec
-  (gloss.core/ordered-map
-   :txncopy codec/TxnCodec
-   :hashtype :uint32-le))
-
-;; (defmethod execute-item :op-checksig
-;;   [& [_
-;;       [[pub-hash sig+hashcode & rest] alt ctrl]
-;;       {:keys [txn txIn]}]]
-;;   (let [txn (db/parent-txn txIn)
-;;         txIn-idx (:txIn/idx txIn)
-;;         hashtype (extract-hash-type sig+hashcode)
-;;         sig (drop-last-bytes 1 sig+hashcode)
-;;         ;; TODO: :op-codeseparators. For now, use full script.
-;;         subscript (-> (:txIn/prevTxOut txIn)
-;;                       (:txOut/script))]
-;;     (symp txIn-idx)
-;;     (symp hashtype)
-;;     (symp sig)
-;;     (symp subscript)
-;;     (let [txncopy {:txncopy (-> (clear-txin-scripts txn)
-;;                                 (assoc-in
-;;                                  [:txn/txIns txIn-idx :txIn/script]
-;;                                  subscript))
-;;                    :hashtype hashtype}]
-;;       (let [txncopy-bytes (codec/encode txncopy-codec txncopy)
-;;             txncopy-hash (crypto/double-sha256 txncopy-bytes)]
-;;         txncopy-hash))))
-
-(defn touch-txncopy
-  "Manually d/touch the child-entities until I generalize some
-   touch-all (or map-all) function that actually works.
-   I need to do this because EntityMaps are not acutally IMaps,
-   so I need to `d/touch` and `into {}` recursively so that
-   Gloss can serialize it."
-  [txn]
-  (-> txn
-      (update-in [:txn/txOuts]
-                 (partial map (comp (partial into {}) d/touch)))
-      (update-in [:txn/txIns]
-                 (fn [txins]
-                   (map (fn [txin]
-                          (update-in txin
-                                     [:txIn/prevTxOut]
-                                     (partial d/touch)))
-                        txins)))))
+      ;; Assoc new txIn set back into txn
+      (-> (codec/touch-all txn)
+          (assoc :txn/txIns updated-txins)))))
 
 (defmethod execute-item :op-checksig
   [& [_
       [[pub-hash sig+hashcode & rest] alt ctrl]
       {:keys [txin]}]]
-  (let [txn (db/parent-txn txin)
-        txin-idx (:txIn/idx txin)
-        hashtype (extract-hash-type sig+hashcode)
-        sig (drop-last-bytes 1 sig+hashcode)
-        ;; TODO: :op-codeseparators. For now, use full script.
-        subscript (-> (:txIn/prevTxOut txin)
-                      (:txOut/script))]
-    ;; (symp txIn-idx)
-    ;; (symp hashtype)
-    ;; (symp sig)
-    ;; (symp subscript)
-    (let [txncopy (as-> txn _
-                        ;; Set all txIn/script to (byte 0).
-                        (clear-txin-scripts _)
-                        ;; Set this txIn/script to subscript.
-                        (assoc-subscript _ txin-idx subscript)
-                        ;; d/touch and {} it so we can serialize.
-                        (touch-txncopy _))]
-      (let [txncopy-bytes (codec/encode codec/TxnCodec txncopy)
-            ;hashcode (codec/encode HashTypeCodec hashtype)
-            txncopy+hashtype (concat-bytes
-                              (buf->bytes txncopy-bytes)
-                              (into-byte-array [1 0 0 0]))
-            ;txncopy-bytes (codec/encode txncopy-codec txncopy)
-            txncopy-hash (crypto/double-sha256 txncopy+hashtype)]
-        (bytes->hex txncopy-hash)))))
-
-(require '[hyzhenhok.keyx :as key])
-
+  ;; FIXME: l0l. Make parse return bytes, not ubytes.
+  (let [pub-hash (ubytes->bytes pub-hash)
+        sig+hashcode (ubytes->bytes sig+hashcode)]
+    (let [txn (first (:txn/_txIns txin))
+          txin-idx (:txIn/idx txin)
+          hashtype (extract-hash-type sig+hashcode)
+          sig (drop-last-bytes 1 sig+hashcode)
+          ;; TODO: :op-codeseparators. For now, use full script.
+          subscript (-> (:txIn/prevTxOut txin)
+                        (:txOut/script))]
+      (let [txncopy (as-> txn _
+                          ;; Set all txIn/script to (byte 0).
+                          (clear-txin-scripts _)
+                          ;; Set this txIn/script to subscript.
+                          (assoc-subscript _ txin-idx subscript))]
+        (let [txncopy-bytes (codec/encode-txn txncopy)
+              txncopy+hashtype (concat-bytes
+                                (buf->bytes txncopy-bytes)
+                                (into-byte-array [1 0 0 0]))
+              txncopy-hash256 (crypto/double-sha256
+                               txncopy+hashtype)]
+                                        ;(bytes->hex txncopy-hash256)
+          (let [result (if (key/verify txncopy-hash256 sig pub-hash)
+                         1
+                         0)]
+            [(conj rest result) alt ctrl]))))))
 
 ;; pay-to-pubkey [<pubkey> op-checksig]
 ;; pay-to-address  [... ... <pubkey> op-equalverify op-checksig]
-
-;; (execute-item :op-checksig
-;;               ['() '() '()]
-;;               {:txin _})
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; (defmethod execute-item :op-x [_ [main alt ctrl]]
-;;   [main alt ctrl])
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmethod execute-item :op-add [& [_ [[a b & rest] alt ctrl]]]
   [(conj rest (+ a b)) alt ctrl])
@@ -647,32 +591,3 @@
 169 "a9" :op-hash160
 136 "88" :op-equalverify
 172 "ac" :op-checksig
-
-(bytes->hex (byte-array [ (unchecked-byte 172)]))
-
-;; http://blockexplorer.com/testnet/tx/c0248251948a779025c9c541be4c45fbebeda6e11b3756c94f868f6d6cab994a#o1
-;; OP_DUP OP_HASH160 405b4f1b2bb8fd6f2454552a1183071e7189eeaf OP_EQUALVERIFY OP_CHECKSIG
-;; Output to mmPEvbJiY999qdDXCMfTefJmHuspzzVN2w
-
-(bytes->hex (byte-array [(byte 21)]))
-
-(parse
- (hex->ubytes
-  "76a915405b4f1b2bb8fd6f2454552a1183071e7189eeaf88ac"))
-
-;; Redeemed in input:
-;; - :txn/hash
-;; 5545c832836efd03a9433783543e1bbc8640330a2197d93def5cc776674d0017
-;; - :txIn/idx 1
-;; - :txIn/script
-;; 3045022100c135719710fa2c1025d4a54dde2e5aee3eab78ffc3135bc2088f6097c1be0323022062f746d75de3c5072397abdee50286e14e923cdc49a5325e99fd425c7c00b31001 02cfde38ea95953b07bf92eb12d95f85c9ab5e471a23ee3b8ee060eda6ebfff40f
-
-;; "3045022100c135719710fa2c1025d4a54dde2e5aee3eab78ffc3135bc2088f6097c1be0323022062f746d75de3c5072397abdee50286e14e923cdc49a5325e99fd425c7c00b31001"
-;; sig+hashcode (72 bytes)
-
-;; (require '[hyzhenhok.keyx :as key])
-
-;; (-> "02cfde38ea95953b07bf92eb12d95f85c9ab5e471a23ee3b8ee060eda6ebfff40f"
-;;     (key/->pubkey)
-;;     (key/->address :testnet3))
-;; ;; pubhash (33 bytes)

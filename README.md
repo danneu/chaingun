@@ -24,6 +24,8 @@ Predominantly a test-bed for hilarious abstractions and unfamiliar libraries as 
 
 ## Install & Import Demo
 
+### (This uses an old version of the import code that I haven't yet pruned, so I doubt this demo will work)
+
 I'll walk through the process of:
 
 1. Downloading and compiling hyzhenhok

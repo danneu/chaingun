@@ -1,6 +1,7 @@
 (ns hyzhenhok.codec-test
   (:require [expectations :refer :all]
             [clojure.string :as str]
+            [hyzhenhok.db :as db]
             [hyzhenhok.codec :refer :all]
             [hyzhenhok.util :refer :all])
   (:import [java.util Date]))
@@ -354,7 +355,7 @@
 
 
 (expect  {:block/hash "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
-          :txns [
+          :block/txns [
                  ;; Coinbase txn (txn 0)
                  {:txn/hash "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
                   :txn/lockTime 0,
@@ -378,3 +379,65 @@
           :prevBlockHash "0000000000000000000000000000000000000000000000000000000000000000",
           :block/ver 1},
   (hexify-structure (decode BlockCodec (hex->bytes "0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c0101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; (defn test-txn
+;;   "Txn idx 1 in block 728.
+;;    The first mainnet block with a standard transaction (2 inputs)."
+;;   []
+;;   (-> "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516"
+;;       db/find-txn-by-hash))
+
+;; (defn test-txin []
+;;   (->> (test-txn)
+;;        :txn/txIns
+;;        (filter #(= 1 (:txIn/idx %)))
+;;        first))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;; ;; Roundtrip with txin
+;; (expect
+;;   {:txIn/sequence 4294967295,
+;;    :txIn/script "493046022100a2ab7cdc5b67aca032899ea1b262f6e8181060f5a34ee667a82dac9c7b7db4c3022100911bc945c4b435df8227466433e56899fbb65833e4853683ecaa12ee840d16bf01",
+;;    :prevTxOut {:txOut/idx 0,
+;;                :txn/hash "2db69558056d0132d9848851fd20329be9cd590fa5ae2b3c55f58931f42e27f7"}}
+;;   (->> (test-txin)
+;;        touch-all
+;;        encode-entity
+;;        (decode-entity :txin)
+;;        hexifying-walk))
+
+;; ;; Roundtrip with txn
+;; (expect {:txn/hash "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516"
+;;          :txn/loclTime 0
+;;          :txn/txOuts [{:txOut/script
+;;                        :txOut/value}]
+;;          :txn/txIns []})
+;; (->> (test-txn)
+;;      touch-all
+;;      encode-entity
+;;      (decode-entity :txn)
+;;      hexifying-walk)
+
+;; (bytes->hex (:txn/hash (datomic.api/touch (test-txn))))
+
+;; {:txn/hash "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516",
+;;  :txn/lockTime 0,
+;;  :txn/txOuts ({:txOut/script "76a91412ab8dc588ca9d5787dde7eb29569da63c3a238c88ac",
+;;                :txOut/value 10000000000N}),
+;;  :txn/txIns ({:txIn/sequence 4294967295,
+;;               :txIn/script "493046022100e26d9ff76a07d68369e5782be3f8532d25ecc8add58ee256da6c550b52e8006b022100b4431f5a9a4dcb51cbdcaae935218c0ae4cfc8aa903fe4e5bac4c208290b7d5d01",
+;;               :prevTxOut {:txOut/idx 0,
+;;                           :txn/hash "ff3dc8b461305acc5900d31602f2dafebfc406e5b050b14a352294f0965e0bf6"}}
+;;              {:txIn/sequence 4294967295,
+;;               :txIn/script "493046022100a2ab7cdc5b67aca032899ea1b262f6e8181060f5a34ee667a82dac9c7b7db4c3022100911bc945c4b435df8227466433e56899fbb65833e4853683ecaa12ee840d16bf01",
+;;               :prevTxOut {:txOut/idx 0,
+;;                           :txn/hash "2db69558056d0132d9848851fd20329be9cd590fa5ae2b3c55f58931f42e27f7"}}),
+;;  :txn/ver 1}
+
+;; ;; (decode :txn (encode (touch-all (get-toy-txn))))
