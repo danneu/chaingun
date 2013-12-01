@@ -1,7 +1,10 @@
 [
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;; Block
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;;
- ;; - :block/hash       one Bytes
+ ;; - :block/hash       one Bytes (unique value) (indexed)
+ ;; - :block/idx        one Long                 (indexed)
  ;; - :block/ver        one Long
  ;; - :block/prevBlock  one Ref
  ;; - :block/merkleRoot one Bytes
@@ -17,6 +20,14 @@
   :db/unique      :db.unique/value
   :db/ident       :block/hash
   :db/valueType   :db.type/bytes
+  :db/cardinality :db.cardinality/one}
+ ;; :block/idx one Long
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/doc         "Block idx."
+  :db/index       true
+  :db/ident       :block/idx
+  :db/valueType   :db.type/long
   :db/cardinality :db.cardinality/one}
  ;; :block/ver one Long
  {:db/id #db/id[:db.part/db]
@@ -68,9 +79,11 @@
   :db/valueType   :db.type/ref
   :db/cardinality :db.cardinality/many}
 
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;; Txn
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;;
- ;; - :txn/hash     one Bytes
+ ;; - :txn/hash     one Bytes (indexed)
  ;; - :txn/idx      one Long
  ;; - :txn/ver      one Long
  ;; - :txn/lockTime one Long
@@ -81,7 +94,8 @@
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/doc         "Txn hash."
-  :db/unique      :db.unique/value
+  ;; :db/unique      :db.unique/value
+  :db/index       true
   :db/ident       :txn/hash
   :db/valueType   :db.type/bytes
   :db/cardinality :db.cardinality/one}
@@ -121,7 +135,9 @@
   :db/valueType   :db.type/ref
   :db/cardinality :db.cardinality/many}
 
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;; TxIn
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;;
  ;; - :txIn/idx       one Long
  ;; - :txIn/script    one Bytes
@@ -157,7 +173,9 @@
   :db/valueType   :db.type/ref
   :db/cardinality :db.cardinality/one}
 
- ;; TxOut (txOut/_txOuts -> Txn)
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ ;; TxOut
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;;
  ;; - :txOut/idx    one Long
  ;; - :txOut/value  one Long
@@ -183,4 +201,32 @@
   :db/doc         "TxOut pubkey script."
   :db/ident       :txOut/script
   :db/valueType   :db.type/bytes
-  :db/cardinality :db.cardinality/one}]
+  :db/cardinality :db.cardinality/one}
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Addr
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; - :addr/b58    one String (indexed) (identity upsert)
+;; - :addr/txIns  many Refs
+;; - :addr/txOuts many Refs
+
+ ;; :addr/b58 (one String) - indexed, unique upsert
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/ident       :addr/b58
+  :db.unique      :db.unique/identity
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one}
+ ;; :addr/txIns (many Refs)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/ident       :addr/txIns
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/many}
+ ;; :addr/txOuts (many Refs)
+ {:db/id #db/id[:db.part/db]
+  :db.install/_attribute :db.part/db
+  :db/ident       :addr/txOuts
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/many}
+ ]

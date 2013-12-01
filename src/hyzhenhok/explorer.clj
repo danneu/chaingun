@@ -111,7 +111,7 @@
 
 (defn show-block [blk]
   (html
-   [:h1 "Block " (db/get-block-idx blk)]
+   [:h1 "Block " (:block/idx blk)]
    [:table
     [:tr
      [:td ":block/hash"]
@@ -169,8 +169,13 @@
 (defroutes app-routes
   (GET "/" []
     (show-block (db/find-genesis-block)))
-  (GET "/blocks/:hash" [hash]
-    (show-block (db/find-block-by-hash hash)))
+  (context "/blocks" []
+    (GET "/by-idx/:idx" [idx]
+      (show-block (db/find-block-by-idx (Integer/parseInt idx))))
+    (GET "/:hash" [hash]
+      (show-block (db/find-block-by-hash hash))))
+  ;; (GET "/blocks/:hash" [hash]
+  ;;   (show-block (db/find-block-by-hash hash)))
   (GET "/txns/:hash" [hash]
     (show-txn (db/find-txn-by-hash hash)))
   (route/resources "/")

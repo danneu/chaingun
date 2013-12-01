@@ -218,7 +218,12 @@
        ;; Else derive :prevTxOut
        (let [{prev-txout :txIn/prevTxOut} txin
              txout-idx (:txOut/idx prev-txout)
-             txn-hash (-> prev-txout db/parent-txn :txn/hash)]
+             txn-hash ;(-> prev-txout db/parent-txn :txn/hash)
+                      (-> prev-txout
+                          :txn/_txOuts
+                          first
+                          :txn/hash)
+             ]
          (assoc txin :prevTxOut {:txn/hash txn-hash
                                  :txOut/idx txout-idx}))))
    ;; Post-decode
@@ -252,7 +257,10 @@
    ;; - As above, consider adding :txIn/idx and :txOut/idx on
    ;;   decode. That would let me remove it from db constructor.
    (fn [txn-map]
-     (assoc txn-map :txn/hash (calc-txn-hash txn-map)))))
+     (as-> txn-map _
+           (assoc _ :txn/hash (calc-txn-hash _))
+           (update-in _ [:txn/txIns] #(map-indexed (fn [idx txin] (assoc txin :txIn/idx idx)) %))
+           (update-in _ [:txn/txOuts] #(map-indexed (fn [idx txout] (assoc txout :txOut/idx idx)) %))))))
 
 (defcodec BlockCodec
   (compile-frame
@@ -282,7 +290,8 @@
    (fn [block]
      (as-> block _
            (update-in _ [:block/time] (partial seconds->instant))
-           (assoc _ :block/hash (calc-block-hash _))))))
+           (assoc _ :block/hash (calc-block-hash _))
+           (update-in _ [:block/txns] #(map-indexed (fn [idx txn] (assoc txn :txn/idx idx)) %))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -385,6 +394,121 @@
 ;; #5: 500 per batch "Elapsed time: 15178.628 msecs"
 ;;                   "Elapsed time: 15786.408 msecs"
 
+(def genesis-block
+  "Ship with the genesis block, the one block we can trust
+   without verification. Every other block chains back
+   to this block through :block/prevBlock."
+  (->> (io/resource "genesis.dat")
+       (slurp)
+       (str/trim-newline)
+       (hex->bytes)
+       (decode-block)
+       (#(assoc % :block/idx 0))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; (defn construct-txout [tempids txout]
+;;   (if-let [eid (get tempids
+;;                  (:txOut/idx txout))]
+;;     {:db/id eid
+;;      :txOut/idx (:txOut/idx txout)
+;;      :txOut/value (long (:txOut/value txout))
+;;      :txOut/script (:txOut/script txout)}
+;;     (throw (ex-info "txout not found" {}))))
+
+;; ;; {{:txn/hash _, :txOut/idx _} <tempid>}
+;; (defn construct-txin [db eid txout-lookup txin]
+;;   (let [{hash :txn/hash, idx :txOut/idx} (:prevTxOut txin)
+;;         txout-eid (or ;; First, lookup in db
+;;                    (-> (db/find-txout-by-hash-and-idx db hash idx)
+;;                        :db/id)
+;;                    ;; Not there? Then lookup in this dtx
+;;                    (get-in txout-lookup [(seq hash) idx])
+;;                    ;; Else throw
+;;                    (throw (ex-info "Couldn't find txout."
+;;                                    {:txn/hash hash
+;;                                     :txOut/idx idx})))]
+;;     {:db/id eid
+;;      :txIn/idx (:txIn/idx txin)
+;;      :txIn/script (:txIn/script txin)
+;;      :txIn/sequence (:txIn/sequence txin)
+;;      :txIn/prevTxOut txout-eid}))
+
+;; ;; txIns needs a map to txn/hash & txOut/idx for earlier txns
+;; ;; in the dtx.
+;; (defn construct-txn [db txout-lookup txn]
+;;   {:db/id (db/gen-tempid)
+;;    :txn/hash (:txn/hash txn)
+;;    :txn/ver  (:txn/ver txn)
+;;    :txn/lockTime (:txn/lockTime txn)
+;;    :txn/txIns (map (partial construct-txin
+;;                             db
+;;                             (db/gen-tempid)
+;;                             txout-lookup)
+;;                    (:txn/txIns txn))
+;;    :txn/txOuts (map (partial construct-txout
+;;                              (txout-lookup (seq (:txn/hash txn))))
+;;                     (:txn/txOuts txn))})
+
+;; (defn construct-block
+;;   ([block] (construct-block (db/get-db) (db/gen-tempid) block))
+;;   ([db eid block]
+;;       (let [prev-blk (-> (:prevBlockHash block)
+;;                          (db/find-block-by-hash))]
+;;         (merge
+;;          ;; Derived from prevBlock
+;;          (when prev-blk
+;;            {:block/idx        (inc (:block/idx prev-blk))
+;;             :block/prevBlock  (:db/id prev-blk)})
+;;          ;; Regular stuff
+;;          {:db/id eid
+;;           :block/hash       (:block/hash block)
+;;           :block/ver        (:block/ver block)
+;;           :block/merkleRoot (:block/merkleRoot block)
+;;           :block/time       (:block/time block)
+;;           :block/bits       (:block/bits block)
+;;           :block/nonce      (:block/nonce block)}
+;;          ;; Construct txns
+;;          (let [txns (:block/txns block)
+;;                txout-lookup (->> (for [txn (:block/txns block)]
+;;                                    (vector (seq (:txn/hash txn))
+;;                                            (into []
+;;                                                  (repeatedly
+;;                                                   (count (:txn/txOuts txn))
+;;                                                   db/gen-tempid))))
+;;                                  (into {}))]
+;;            {:block/txns (map (partial construct-txn
+;;                                       db
+;;                                       txout-lookup)
+;;                              txns)})))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn create-genesis-block []
+  (let [eid (db/gen-tempid)]
+    @(d/transact (db/get-conn)
+       [(db/construct-block (db/get-db) eid  genesis-block)
+        [:db/add eid :block/idx 0]])))
+
+(defn create-block
+  "Returns the created block entity-map or nil if
+   a block with this hash already exists."
+  [block]
+  (when-not (db/find-block-by-hash (:block/hash block))
+    (let [temp-block-eid (db/gen-tempid)]
+      (let [result (->> [(db/construct-block (db/get-db)
+                                          temp-block-eid
+                                          block)]
+                        (d/transact (db/get-conn))
+                        (deref))]
+        (let [real-block-eid (d/resolve-tempid (:db-after result)
+                                               (:tempids result)
+                                               temp-block-eid)]
+          ;;(println (class (:db-after result)))
+          (d/entity (:db-after result) real-block-eid))))))
+
+(map vector [:a :b :c] (iterate inc 3))
+
 (defn construct-blks
   "This function whispers, 'Kill me.'
 
@@ -396,12 +520,11 @@
    function can lookup prevBocks and prevTxOuts in
    both the db and in blocks/txout constructed within
    it."
-  [db blks]
+  [db start-idx blks]
   (let [blk->tempid (atom {})
         txout->tempid (atom {})]
-    (for [blk blks]
+    (for [[blk-idx blk] (map vector (iterate inc start-idx) blks)]
       (let [blk-tempid (db/gen-tempid)]
-        ;(print ".") (flush)
         ;; Add this blk's tempid to blk lookup.
         (swap! blk->tempid
                conj
@@ -416,6 +539,7 @@
                         (@blk->tempid (seq (:prevBlockHash blk))))]
            {:block/prevBlock prev-id})
          {:db/id blk-tempid
+          :block/idx blk-idx
           :block/hash (:block/hash blk)
           :block/ver (:block/ver blk)
           :block/merkleRoot (:block/merkleRoot blk)
@@ -482,41 +606,56 @@
                                         (:txn/txIns txn))}))
                        (:block/txns blk))})))))
 
+(defn spinner
+  "This is important."
+  [spinner-type interval-n current-n]
+  (let [states (case spinner-type
+                 :a [\⣾ \⣽ \⣻ \⢿ \⡿ \⣟ \⣯ \⣷]
+                 :b [\← \↖ \↑ \↗ \→ \↘ \↓ \↙]
+                 :c [\◰ \◳ \◲ \◱]
+                 :d [\◴ \◷ \◶ \◵]
+                 :e [\◐ \◓ \◑ \◒]
+                 :f [\. \o \O \@ \*]
+                 :g ["◡◡" "⊙⊙" "◠◠"]
+                 :h [\⠁ \⠂ \⠄ \⡀ \⢀ \⠠ \⠐ \⠈]
+                 :crux [\┤ \┘ \┴ \└ \├ \┌ \┬ \┐]
+                 :piston (map char [9609 9610 9611 9612 9613
+                                    9614 9615 9615 9614 9613
+                                    9612 9611 9610 9609]))
+        state-count (count states)]
+    (as-> (mod current-n (* state-count interval-n)) _
+          (quot _ interval-n)
+          (nth states _))))
+
+(defn round-down [interval idx]
+  (- idx (mod idx interval)))
+
 (defn import-dat []
-  (println "Recreating database...")
-  (db/create-database)
-  (println "Creating coinbase txn...")
-  (db/create-coinbase-txn)
+  ;; (println "Recreating database...")
+  ;; (db/create-database)
+  ;; (println "Creating coinbase txn...")
+  ;; (db/create-coinbase-txn)
   (let [blk-count (db/get-block-count)
-        per-batch 100]
+        per-batch 1
+        start-idx (round-down per-batch blk-count)
+        counter (atom 0)]
     (println "Blocks in database:" blk-count)
     (println "Transacting...")
-    (let [counter (atom 0)]
-      (reduce (fn [db blk-frame-batch]
-                (let [dtx-batch (construct-blks db
-                                                blk-frame-batch)]
-                  ;; Output every time we're actually saving
-                  ;; blocks to the database.
-                  (let [curr-count (-> (swap! counter inc)
-                                       (* per-batch)
-                                       (+ blk-count))]
-                    (print "\r" curr-count " ") (flush))
-                  ;; Accrete the database in each reduction.
-                  (->> (d/transact-async (db/get-conn) dtx-batch)
-                       (deref)
-                       :db-after)))
-              ;; Start off with the persisted database
-              ;; as it is.
-              (db/get-db)
-              ;; blk00000.dat contains 119,965 blocks which
-              ;; takes quite a while to parse and import.
-              ;; This breaks it up into 100 paritions with
-              ;; a simple mechanism for picking back up where
-              ;; it left off.
-              (->> (lazy-blkdat-frames "blk00000.dat")
-                   ;(take 10000)
-                   (map :block)
-                   (drop (- blk-count (mod blk-count per-batch)))
-                   (partition per-batch)
-                   (pmap doall)))))
+    (reduce (fn [db blk-frame-batch]
+              (let [curr-count (-> (swap! counter inc)
+                                   (* per-batch)
+                                   (+ blk-count))
+                    dtx-batch (construct-blks db
+                                              curr-count
+                                              blk-frame-batch)]
+                (print "  " curr-count "\r") (flush)
+                (->> @(d/transact-async (db/get-conn) dtx-batch)
+                     :db-after)))
+            (db/get-db)
+            (->> (lazy-blkdat-frames "blk00000.dat")
+                 ;(take 10000)
+                 (map :block)
+                 (drop start-idx)
+                 (partition-all per-batch)
+                 (pmap doall))))
   (println "\nBlocks in database:" (db/get-block-count)))

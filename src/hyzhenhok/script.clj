@@ -4,6 +4,7 @@
    [hyzhenhok.crypto :as crypto]
    [hyzhenhok.codec2 :as codec]
    [hyzhenhok.keyx :as key]
+   [clojure.core.match :as match]
    [hyzhenhok.db :as db]
    [datomic.api :as d]
    [clojure.core.typed :refer :all])
@@ -14,6 +15,8 @@
     IPersistentVector]))
 
 (set! *warn-on-reflection* false)
+
+;; TODO: OpenSSL BigNum support.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -557,8 +560,9 @@
 (ann execute (Fn [Script -> ScriptState]
                  [Script ScriptState -> ScriptState]))
 (defn execute
-  ;; - `world` is a map of :txIn/script, :txOut/script, and :txn
-  ;;   used for the few ops that need to access that data.
+  ;; - `world` is a map that let's me stick in arbitrary data
+  ;;   from world outside the script, like the full txn or
+  ;;   the full script. I tacked it on for :op-checksig.
   ;; - `state` starts as [(list) (list) (list)]
   ;; - if `item` is ctrl-item? (i.e. it can modify ctrl-stack),
   ;;     - then always execute it.
@@ -591,3 +595,30 @@
 169 "a9" :op-hash160
 136 "88" :op-equalverify
 172 "ac" :op-checksig
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Script templates
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn get-script-type [script]
+  (match/match (parse script)
+    [_ :op-checksig]
+    :pay-to-pubkey
+
+    [:op-dup :op-hash160 _ :op-equalverify :op-checksig]
+    :pay-to-addr
+
+    :else
+    :unknown))
+
+;; FIXME: Make parse return bytes, not ubytes.
+(defn extract-addrs [script]
+  (match/match (parse script)
+    [pubkey :op-checksig]
+    [(key/->address (ubytes->bytes pubkey))]
+
+    [:op-dup :op-hash160 pubkey160 :op-equalverify :op-checksig]
+    [(key/->address (ubytes->bytes pubkey160))]
+
+    :else
+    []))

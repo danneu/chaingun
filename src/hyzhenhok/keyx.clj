@@ -284,14 +284,18 @@
 (defn ->address
   ([key] (->address key :mainnet))
   ([key network]
-     (let [pub (if (and (pubkey? key) (instance? Point key))
-                 key
-                 (->pubkey key))
+     (let [pub (cond
+                (and (pubkey? key) (instance? Point key)) key
+                ;; Might already be hash160 pubkey
+                (= 20 (count key)) key
+                :else (->pubkey key))
            ;; pub (if (pubkey? key)
            ;;       key
            ;;       (->pubkey key))
            ver (byte-array [(-> networks network :address/ver)])
-           hash160 (crypto/hash160 (:bytes pub))
+           hash160 (if (= 20 (count pub)) ;; Dont do this again
+                     pub
+                     (crypto/hash160 (:bytes pub)))
            ver+hash160 (concat-bytes ver hash160)
            checksum (crypto/calc-checksum ver+hash160)
            ver+hash160+checksum (concat-bytes ver+hash160

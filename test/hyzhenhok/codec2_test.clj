@@ -192,16 +192,19 @@
                   :txn/lockTime 0,
                   :txn/txOuts [
                            ;; txout 0
-                           {:txOut/script "4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac",
+                           {:txOut/idx 0
+                            :txOut/script "4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac",
                             :txOut/value 5000000000N}],
                   :txn/txIns [
                           ;; txin 0
-                          {:txIn/sequence 4294967295,
+                          {:txIn/idx 0
+                           :txIn/sequence 4294967295,
                            :txIn/script "04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73",
                            :prevTxOut {:txOut/idx 4294967295,
                                        :txn/hash "0000000000000000000000000000000000000000000000000000000000000000"}}
                           ],
-                  :txn/ver 1}
+                  :txn/ver 1
+                  :txn/idx 0}
                  ],
           :block/nonce 2083236893,
           :block/bits "1d00ffff",

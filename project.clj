@@ -23,6 +23,7 @@
                  [org.clojure/core.typed "0.2.19"]
                  [expectations "1.4.56"]
                  [criterium "0.4.2"]
+                 [org.clojure/core.match "0.2.0"]
                  [org.clojure/math.numeric-tower "0.0.2"]
                  ;[org.clojure/tools.cli "0.2.4"]
                  ;; For hyzhenhok.explorer:

@@ -5,6 +5,7 @@
             [hyzhenhok.db :as db]
             [hyzhenhok.keyx :as key]
             [hyzhenhok.codec2 :as codec2]
+            [hyzhenhok.codec2 :as codec]
             [hyzhenhok.crypto :as crypto]
             [datomic.api :as d]
             [clojure.string :as str]))
@@ -359,88 +360,117 @@
 
 ;; (def b37513 (d/touch (db/find-blk-by-hash2 "00000000a80b44e97fa7973384bbb5b94aad4fbc144e59ceb66bf053dfdec8ba")))
 
-;; (def tin (d/touch (first (:txn/txIns (first (filter #(= 1 (:txn/idx %)) (:block/txns b37513)))))))
+  (let [txin (-> (db/find-txn-by-hash "8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e")
+                 :txn/txIns
+                 first)
+        txin-sig (hex->bytes "3045022100eaa5542714d1e31eada58c31e6ac77774ae803a696884b77a24936ae0da8dd0702207b34d1b20784412f625821d97eae2ccc27376521b1c6bfb8b37fdde9e697a54301")
+        txout-pubkey (hex->bytes "04dcf9e313efd7aec54c423d25a559a83311ec3574f5b5600f43f8afbb89791bf7ae4cf7c3b920894b350e07ee5a1d384965e7a6a6742cbc793800d33d6a4562bd")]
+    (execute
+     [txout-pubkey :op-checksig]
+     [(list txin-sig) '() '()]
+     {:txin txin}))
 
-;; (def tsig+hashcode
-;;   (-> (parse (:txIn/script tin))
-;;       (execute {})
-;;       (ffirst)
-;;       (ubytes->bytes)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; OP-CHECKSIG: PAY TO PUBKEY
+;; - prevTxOut/script [<pubkeyhash> :op-checksig]
+;; - txIn/script [<sig>]
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Block 37513
+;; Testing :txn/hash 8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e in Block 37513 .
+;; http://blockexplorer.com/tx/8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (def tpubhash
-;;   (-> (parse (:txOut/script (:txIn/prevTxOut tin)))
-;;       first
-;;       (ubytes->bytes)))
+(let [conn (db/scratch-conn)]
+  (let [
+        ;; prev-txout
+        tempid1 (db/gen-tempid)
+        prev-txout {:db/id tempid1
+                    :txOut/idx 1
+                    :txOut/value 34900000000
+                    :txOut/script (hex->bytes "4104dcf9e313efd7aec54c423d25a559a83311ec3574f5b5600f43f8afbb89791bf7ae4cf7c3b920894b350e07ee5a1d384965e7a6a6742cbc793800d33d6a4562bdac")}
+        ;; prev-txn
+        tempid-prevtxn (db/gen-tempid)
+        prev-txn {:db/id tempid-prevtxn
+                  :txn/txOuts #{tempid1}
+                  :txn/hash (hex->bytes "a41bb1b3f8ce6b1d9cf7bd7a8707efeb7316dd5ba11549d1510d3224374e3710")}
+        ;; TxIn 0
+        tempid2 (db/gen-tempid)
+        tx-in0 {:db/id tempid2
+                :txIn/sequence 4294967295
+                :txIn/script (hex->bytes "483045022100eaa5542714d1e31eada58c31e6ac77774ae803a696884b77a24936ae0da8dd0702207b34d1b20784412f625821d97eae2ccc27376521b1c6bfb8b37fdde9e697a54301")
+                :txIn/idx 0
+                :txIn/prevTxOut tempid1}
+        ;; TxOut 0
+        tempid3 (db/gen-tempid)
+        tx-out0 {:db/id tempid3
+                 :txOut/script (hex->bytes "41042f40514a99be39b3e94345455f78c4dfbbcd7f9cc6e9d368e0438f444f05cf7169712955520c6dee6239b4274e7bfb173c32ab97c7faad5692fa9745256a21f8ac")
+                 :txOut/value 14900000000
+                 :txOut/idx 0}
+        ;; TxOut 1
+        tempid4 (db/gen-tempid)
+        tx-out1 {:db/id tempid4
+                 :txOut/script (hex->bytes "4104d4ae60e43fd37ed680f40f86576f54fc57f61d3da0c9743cb785af0c6c64e9c7ee26b156bbca0542a4eb1830b9e0e03592c76c6a6523d3dee0b2471112db5d3bac")
+                 :txOut/value 20000000000
+                 :txOut/idx 1}
+        ;; Txn
+        tempid5 (db/gen-tempid)
+        txn {:db/id tempid5
+             :txn/txOuts #{tempid3 tempid4}
+             :txn/txIns #{tempid2}
+             :txn/lockTime 0
+             :txn/ver 1
+             :txn/idx 1
+             :txn/hash (hex->bytes "8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e")}]
+        (let [db (:db-after @(d/transact conn [prev-txout
+                                               prev-txn
+                                               tx-in0
+                                               tx-out0
+                                               tx-out1
+                                               txn]))
+              found-txn (db/find-txn-by-hash db "8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e")]
+          ;; Begin test
+          (let [txin (-> found-txn :txn/txIns first)
+                txout (:txIn/prevTxOut txin)]
+            (expect ['(1) '() '()]
+              (execute (parse (:txOut/script txout))
+                       (execute (parse (:txIn/script txin)))
+                       {:txin txin}))))))
 
-;; (def tworld {:txin tin})
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; OP-CHECKSIG: PAY TO ADDRESS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (def ttxn (first (:txn/_txIns tin)))
 
-;; (def ttxin-idx (:txIn/idx tin))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Get script type
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (def tsig (drop-last-bytes 1 tsig+hashcode))
+(expect :pay-to-pubkey
+  (-> "4104d4ae60e43fd37ed680f40f86576f54fc57f61d3da0c9743cb785af0c6c64e9c7ee26b156bbca0542a4eb1830b9e0e03592c76c6a6523d3dee0b2471112db5d3bac"
+      hex->bytes
+      get-script-type))
 
-;; (def tsubscript (-> (:txIn/prevTxOut tin)
-;;                     (:txOut/script)))
+(expect :pay-to-addr
+  (-> "76a91427d25a1ff9a6da31eeb991c48bb6cd95191a6b2c88ac"
+      hex->bytes
+      get-script-type))
 
-;; (def ttxncopy (-> ttxn
-;;                   clear-txin-scripts
-;;                   (assoc-subscript ttxin-idx tsubscript)))
+(expect :unknown
+  (get-script-type (byte-array 0)))
 
-;; ;; assoc-subscript
+;; Extract addresses ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (let [all-txins (:txn/txIns ttxn)
-;;       target-txin (-> (filter #(= ttxin-idx (:txIn/idx %))
-;;                               all-txins)
-;;                       first)
-;;       other-txins (remove #(= ttxin-idx (:txIn/idx %)) all-txins)
-;;       updated-txin (-> (codec2/touch-all target-txin)
-;;                        (assoc :txIn/script tsubscript))
-;;       updated-txins (conj other-txins updated-txin)]
-;;   ;target-txin
-;;   ;other-txins
-;;   ;(bytes->hex (:txIn/script updated-txin))
-;;   updated-txins
-;;   (let [txncopy (assoc (codec2/touch-all ttxn)
-;;                   :txn/txIns updated-txins)
-;;         txncopy-bytes (codec2/encode-txn txncopy)
-;;         txncopy+hashtype (concat-bytes
-;;                           (buf->bytes txncopy-bytes)
-;;                           (into-byte-array [1 0 0 0]))
-;;         txncopy-hash (crypto/double-sha256 txncopy+hashtype)
-;;         ]
-;;     txncopy-bytes
-;;     txncopy+hashtype
-;;     (bytes->hex txncopy-hash)))
+;; Extract from :pay-to-pubkey
+(expect ["14dZLztXXGSYuZDHBqHe7iXiCGNgLTfsdY"]
+  (-> "76a91427d25a1ff9a6da31eeb991c48bb6cd95191a6b2c88ac"
+      hex->bytes
+      extract-addrs))
 
-;; (def txncopy-hash256 (hex->bytes "a8a513d60c4d11bc2c18edbd3385aff6ff81e778562343d17b90d68a8d1ddae8"))
+;; Extract from :pay-to-addr
+(expect ["181iyofcXEUif4kfxAymFeX9EtmfKQExPL"]
+  (-> "4104fdf079a72b3e3525eab45eeed8cdd90bcbd68643014b7d60b4400e504f2165e9e4f09fe1d5fa6853e92a83fdb64d8c3d693a2a4aa1a11762e9b1fc0a945fa364ac"
+      hex->bytes
+      extract-addrs))
 
-;; ;(key/verify data sig pub-hash)
-
-;; (key/verify txncopy-hash256 tsig tpubhash)
-
-;; (let [b37513 (db/find-blk-by-hash2 "00000000a80b44e97fa7973384bbb5b94aad4fbc144e59ceb66bf053dfdec8ba")
-;;       txin (-> (filter #(= 1 (:txn/idx %)) (:block/txns b37513))
-;;                first
-;;                :txn/txIns
-;;                first)
-;;       txin-state (-> (parse (:txIn/script txin))
-;;                      (execute ['() '() '()] {}))
-;;       parsed-txout-script (-> (:txIn/prevTxOut txin)
-;;                               :txOut/script
-;;                               parse)]
-;;   ;(execute parsed-txout-script txin-state {:txin tin})
-;;   ;txin-state
-;;   parsed-txout-script
-;;   )
-
-;; (expect ['(1) '() '()]
-;;   (let [txin (-> (db/find-txn-by-hash "8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e")
-;;                  :txn/txIns
-;;                  first)
-;;         txin-sig (hex->bytes "3045022100eaa5542714d1e31eada58c31e6ac77774ae803a696884b77a24936ae0da8dd0702207b34d1b20784412f625821d97eae2ccc27376521b1c6bfb8b37fdde9e697a54301")
-;;         txout-pubkey (hex->bytes "04dcf9e313efd7aec54c423d25a559a83311ec3574f5b5600f43f8afbb89791bf7ae4cf7c3b920894b350e07ee5a1d384965e7a6a6742cbc793800d33d6a4562bd")]
-;;     (execute
-;;      [txout-pubkey :op-checksig]
-;;      [(list txin-sig) '() '()]
-;;      {:txin txin})))
+;; Extract from :unknown
+(expect [] (extract-addrs (byte-array 0)))

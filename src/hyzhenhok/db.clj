@@ -46,6 +46,17 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn scratch-conn
+  "Create a connection to an anonymous, in-memory database.
+   Used in tests."
+  []
+  (let [uri (str "datomic:mem://" (d/squuid))]
+    (d/delete-database uri)
+    (d/create-database uri)
+    (let [conn (d/connect uri)]
+      (transact-all conn "resources/schema.edn")
+      conn)))
+
 (def uri "datomic:free://localhost:4334/hyzhenhok")
 
 (defn create-database
@@ -157,37 +168,44 @@
 
 (defn get-block-count
   "Returns count of blocks in the db."
-  ([]
-     (get-block-count (get-db)))
-  ([db]
-     (or (only (d/q '[:find (count ?e)
-                      :where [?e :block/hash]]
-                    db))
-         0)))
+  ([] (get-block-count (get-db)))
+  ([db] (count (seq (d/datoms db :avet :block/hash)))))
 
-(defn get-block-count2
-  ([] (get-block-count2 (get-db)))
-  ([db]
-     (let [count (->> (d/datoms db :avet :block/hash)
-                      (d/q '[:find (count ?e) :where [?e]])
-                      ffirst)]
-       (or count 0))))
+(defn get-txn-count
+  ([] (get-txn-count (get-db)))
+  ([db] (count (seq (d/datoms db :avet :txn/hash)))))
+
+(defn find-block-by-idx
+  ([idx] (find-block-by-idx (get-db) idx))
+  ([db idx]
+     (->> (d/datoms db :avet :block/idx idx)
+          (d/q '[:find ?e :where [?e]])
+          ffirst
+          (d/entity db))))
+
+;; (defn find-txn-by-hash
+;;   "Find txn by hash (String or ByteArray)."
+;;   [hash]
+;;   (let [hash (if (string? hash)
+;;                (hex->bytes hash)
+;;                hash)]
+;;     (qe '[:find ?e
+;;           :in $ ?given-hash
+;;           :where
+;;           [?e :txn/hash ?hash]
+;;           [(java.util.Arrays/equals
+;;             ^bytes ?hash ^bytes ?given-hash)]]
+;;         (get-db) hash)))
 
 (defn find-txn-by-hash
-  "Find txn by hash (String or ByteArray)."
-  [hash]
-  (let [hash (if (string? hash)
-               (hex->bytes hash)
-               hash)]
-    (qe '[:find ?e
-          :in $ ?given-hash
-          :where
-          [?e :txn/hash ?hash]
-          [(java.util.Arrays/equals
-            ^bytes ?hash ^bytes ?given-hash)]]
-        (get-db) hash)))
-
-;(hyzhenhok.explorer/show-txn (find-txn-by-hash  "6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516"))
+  "60x faster than a naive datalog query."
+  ([hash] (find-txn-by-hash (get-db) hash))
+  ([db hash]
+     (->> (if (string? hash) (hex->bytes hash) hash)
+          (d/datoms db :avet :txn/hash)
+          (d/q '[:find ?e :where [ ?e _]])
+          ffirst
+          (d/entity db))))
 
 (defn find-txout-by-hash-and-idx [db hash idx]
   (let [hash (if (string? hash)
@@ -215,6 +233,10 @@
                  [?e :block/time ?v]
                  [(< ?v ?time)]]
                (get-db) (:block/time block)))))
+
+;; (get-block-idx (hex->bytes "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"))
+
+;; (time (get-block-idx (find-blk-by-hash2 (hex->bytes "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"))))
 
 ;; Shouldn't be in db ns. There should be some sort
 ;; of `models` namespace for functions on entities/map
@@ -272,6 +294,7 @@
            (d/q '[:find ?e :where [?e _]])
            ffirst
            (d/entity db))))
+(def find-block-by-hash find-blk-by-hash2)
 
 (defn find-txn-by-hash2
   "60x faster than a naive datalog query."
@@ -299,8 +322,21 @@
 ;;     :txn/hash
 ;;     bytes->hex)
 
-;; ;; "e3bf3d07d4b0375638d5f1db5255fe07ba2c4cb067cd81b84ee974b6585fb468"
+;; (defn find-txns-by-hash
+;;   ([hash] (find-txns-by-hash (get-db) hash))
+;;   ([db hash]
+;;      (->> (if (string? hash) (hex->bytes hash) hash)
+;;           (d/datoms db :avet :txn/hash)
+;;           (d/q '[:find ?e :where [?e]])
+;;           ;ffirst
+;;           ;(d/entity db)
+;;           )))
 
+;; (let [hash (hex->bytes "e3bf3d07d4b0375638d5f1db5255fe07ba2c4cb067cd81b84ee974b6585fb468")]
+;;   (seq (d/datoms (get-db) :avet :txn/hash hash)))
+
+;; (find-txn-by-hash2
+;;  "e3bf3d07d4b0375638d5f1db5255fe07ba2c4cb067cd81b84ee974b6585fb468")
 
 ;; 17592186654920
 ;; 17592186656361

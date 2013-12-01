@@ -4,6 +4,7 @@
    [hyzhenhok.db :as db]
    [hyzhenhok.codec :as codec]
    [hyzhenhok.codec2 :as codec2]
+   [hyzhenhok.seed :as seed]
    [hyzhenhok.explorer :as explorer])
   (:gen-class))
 
@@ -25,6 +26,10 @@
 
 (defmethod execute "db:import-dat" [_]
   (codec/import-dat)
+  (System/exit 0))
+
+(defmethod execute "bench1" [_]
+  (seed/seed)
   (System/exit 0))
 
 (defmethod execute "db:import-dat2" [_]
