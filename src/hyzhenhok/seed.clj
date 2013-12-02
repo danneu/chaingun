@@ -146,7 +146,7 @@
     (println "Blocks in database:" blk-count)
     (println "Transacting...")
     (reduce (fn [db blk-frame-batch]
-              (let [curr-count (-> (swap! counter inc)
+              (let [curr-count (-> @counter
                                    (* per-batch)
                                    (+ blk-count))
                     dtx-batch (construct-blks db
@@ -156,6 +156,7 @@
                                      (mapcat construct-addrs
                                              dtx-batch))]
                 (print "  " curr-count "\r") (flush)
+                (swap! counter inc)
                 (->> @(d/transact-async (db/get-conn) full-dtx)
                      :db-after)))
             (db/get-db)
