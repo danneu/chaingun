@@ -234,15 +234,15 @@
 ;;              "0bfbcadae145d870428db173412d2d860b9acf5e")]
 ;;     (execute [:op-checksig] [(list pubkey sig) '() '()] world)))
 
-(defn assoc-subscript2 [txn txin-idx subscript]
-  (let [all-txins (:txn/txIns txn)
-        target-txin (first
-                     (filter #(= txin-idx (:txIn/idx %))
-                             all-txins))
-        other-txins (remove #(= txin-idx (:txIn/idx %)) all-txins)]
-    (let [updated-txin (assoc target-txin :txIn/script subscript)
-          updated-txins (conj other-txins updated-txin)]
-      (assoc txn :txn/txIns updated-txins))))
+;; (defn assoc-subscript2 [txn txin-idx subscript]
+;;   (let [all-txins (:txn/txIns txn)
+;;         target-txin (first
+;;                      (filter #(= txin-idx (:txIn/idx %))
+;;                              all-txins))
+;;         other-txins (remove #(= txin-idx (:txIn/idx %)) all-txins)]
+;;     (let [updated-txin (assoc target-txin :txIn/script subscript)
+;;           updated-txins (conj other-txins updated-txin)]
+;;       (assoc txn :txn/txIns updated-txins))))
 
 ;; TODO: This is where I need a robust, recursive touch-all
 ;; function.
@@ -360,20 +360,21 @@
 
 ;; (def b37513 (d/touch (db/find-blk-by-hash2 "00000000a80b44e97fa7973384bbb5b94aad4fbc144e59ceb66bf053dfdec8ba")))
 
-  (let [txin (-> (db/find-txn-by-hash "8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e")
-                 :txn/txIns
-                 first)
-        txin-sig (hex->bytes "3045022100eaa5542714d1e31eada58c31e6ac77774ae803a696884b77a24936ae0da8dd0702207b34d1b20784412f625821d97eae2ccc27376521b1c6bfb8b37fdde9e697a54301")
-        txout-pubkey (hex->bytes "04dcf9e313efd7aec54c423d25a559a83311ec3574f5b5600f43f8afbb89791bf7ae4cf7c3b920894b350e07ee5a1d384965e7a6a6742cbc793800d33d6a4562bd")]
-    (execute
-     [txout-pubkey :op-checksig]
-     [(list txin-sig) '() '()]
-     {:txin txin}))
+  ;; (let [txin (-> (db/find-txn-by-hash "8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e")
+  ;;                :txn/txIns
+  ;;                first)
+  ;;       txin-sig (hex->bytes "3045022100eaa5542714d1e31eada58c31e6ac77774ae803a696884b77a24936ae0da8dd0702207b34d1b20784412f625821d97eae2ccc27376521b1c6bfb8b37fdde9e697a54301")
+  ;;       txout-pubkey (hex->bytes "04dcf9e313efd7aec54c423d25a559a83311ec3574f5b5600f43f8afbb89791bf7ae4cf7c3b920894b350e07ee5a1d384965e7a6a6742cbc793800d33d6a4562bd")]
+  ;;   (execute
+  ;;    [txout-pubkey :op-checksig]
+  ;;    [(list txin-sig) '() '()]
+  ;;    {:txin txin}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; OP-CHECKSIG: PAY TO PUBKEY
 ;; - prevTxOut/script [<pubkeyhash> :op-checksig]
 ;; - txIn/script [<sig>]
+;; - TODO Move test fixtures into .dat file
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Block 37513
 ;; Testing :txn/hash 8697331c3124c8a4cf2f43afb5732374ea13769e42f10aa3a98148a08989af5e in Block 37513 .
@@ -437,9 +438,71 @@
                        {:txin txin}))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; OP-CHECKSIG: PAY TO ADDRESS
+;; OP-CHECKSIG: PAY TO ADDRESS (Change to "pay-to-pubkey160")
+;;
+;; TODO: Move test fixtures into a .dat file.
+;; - Block 37503, Tx idx 1
+;; http://blockexplorer.com/tx/a41bb1b3f8ce6b1d9cf7bd7a8707efeb7316dd5ba11549d1510d3224374e3710
+;; - Contains both pay-to-pubkey160 and pay-to-pubkey
+;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(let [conn (db/scratch-conn)]
+  (let [
+        ;; prev-txout (in block 37389)
+        tempid1 (db/gen-tempid)
+        prev-txout {:db/id tempid1
+                    :txOut/idx 0
+                    :txOut/value 35000000000
+                    :txOut/script (hex->bytes "4104e3a564a42717a9d4c15f47b33adf96d2a6286bf6ddf97777b808e0840c3a713cfe4b6d9b4581c331052e1d9bf281fb5f9bd51235f2887fa460eff2c251efe428ac")}
+        ;; prev-tx
+        tempid2 (db/gen-tempid)
+        prev-tx {:db/id tempid2
+                 :txn/txOuts #{tempid1}
+                 :txn/hash (hex->bytes "d9a4176d14dbb00d6b798a30b32243af455be181f3cd2bd879372c241177b454")}
+        ;; TxIn 0/0
+        tempid3 (db/gen-tempid)
+        tx-in0 {:db/id tempid3
+                :txIn/sequence 4294967295
+                :txIn/idx 0
+                :txIn/prevTxOut tempid1
+                :txIn/script (hex->bytes "493046022100c602ba8ef022965fc25dc3a33fe1a6e5ff3e350facdd51442f1e66a8d4a14b62022100a1af06a9905931ca979997fcf1f41916bb3b5352bde35eae61d284899718b56e01")}
+        ;; TxOut 0/1
+        tempid4 (db/gen-tempid)
+        tx-out0 {:db/id tempid4
+                 :txOut/idx 0
+                 :txOut/value 100000000
+                 :txOut/script (hex->bytes "76a91427d25a1ff9a6da31eeb991c48bb6cd95191a6b2c88ac")}
+        ;; TxOut 1/1
+        tempid5 (db/gen-tempid)
+        tx-out1 {:db/id tempid5
+                 :txOut/idx 1
+                 :txOut/value 34900000000
+                 :txOut/script (hex->bytes "4104dcf9e313efd7aec54c423d25a559a83311ec3574f5b5600f43f8afbb89791bf7ae4cf7c3b920894b350e07ee5a1d384965e7a6a6742cbc793800d33d6a4562bdac")}
+        ;; Tx
+        tempid6 (db/gen-tempid)
+        tx {:db/id tempid6
+            :txn/txOuts #{tempid4 tempid5}
+            :txn/txIns #{tempid3}
+            :txn/lockTime 0
+            :txn/ver 1
+            :txn/idx 1
+            :txn/hash (hex->bytes "a41bb1b3f8ce6b1d9cf7bd7a8707efeb7316dd5ba11549d1510d3224374e3710")}]
+    ;; Transact the data
+    (let [db (:db-after @(d/transact conn [prev-txout
+                                           prev-tx
+                                           tx-in0
+                                           tx-out0
+                                           tx-out1
+                                           tx]))
+          found-tx (db/find-txn-by-hash db "a41bb1b3f8ce6b1d9cf7bd7a8707efeb7316dd5ba11549d1510d3224374e3710")]
+      ;; Begin test
+      (let [txin (-> found-tx :txn/txIns first)
+            txout (:txIn/prevTxOut txin)]
+        (expect ['(1) '() '()]
+          (execute (parse (:txOut/script txout))
+                   (execute (parse (:txIn/script txin)))
+                   {:txin txin}))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Get script type
@@ -474,3 +537,5 @@
 
 ;; Extract from :unknown
 (expect [] (extract-addrs (byte-array 0)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

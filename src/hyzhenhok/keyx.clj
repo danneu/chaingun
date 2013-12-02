@@ -287,7 +287,7 @@
      (let [pub (cond
                 (and (pubkey? key) (instance? Point key)) key
                 ;; Might already be hash160 pubkey
-                (= 20 (count key)) key
+                (and (byte-array? key) (= 20 (count key))) key
                 :else (->pubkey key))
            ;; pub (if (pubkey? key)
            ;;       key

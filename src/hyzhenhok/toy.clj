@@ -3,6 +3,9 @@
             [hyzhenhok.db :as db]
             [datomic.api :as d]))
 
+;;;; This namespace contains convenient entities to play
+;;;; with while I write code.
+
 (defn first-addr []
   (-> (db/find-addr "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
       d/touch))
