@@ -11,6 +11,7 @@
             [datomic.api :as d]
             ;[clojure.core.typed :refer :all]
             [clojure.test :refer :all]
+            ;[hyzhenhok.seed :as seed]
             )
   (:import [clojure.lang IPersistentMap PersistentArrayMap]
            [java.util Date]
@@ -348,21 +349,6 @@
 ;; Seed DB ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn resource-bytes
-  "Returns file contents as a byte-array.
-   `filename` is relative to the resources dir.
-   Ex: (resource-bytes \"blk00000.dat\") => [B"
-  [filename]
-  (let [stream (io/input-stream (io/resource filename))
-        available (.available stream)
-        bytes-out (byte-array available)]
-    (.read stream bytes-out 0 available)
-    bytes-out))
-
-(defn lazy-blkdat-frames [filename]
-  (->> (resource-bytes filename)
-       (gloss.io/lazy-decode-all BlkDatCodec)))
-
 ;; The problem is that since blocks and txins have
 ;; attributes that point to existing blocks and txouts,
 ;; we need to (1) lookup blocks/txouts in the db or
@@ -507,155 +493,99 @@
           ;;(println (class (:db-after result)))
           (d/entity (:db-after result) real-block-eid))))))
 
-(map vector [:a :b :c] (iterate inc 3))
+;; (defn construct-blks
+;;   "This function whispers, 'Kill me.'
 
-(defn construct-blks
-  "This function whispers, 'Kill me.'
+;;    Ideally I'd be able to:
+;;    (reduce (fn [db blk] ... (d/with ...)) blks).
 
-   Ideally I'd be able to:
-   (reduce (fn [db blk] ... (d/with ...)) blks).
-
-   I wanted a way to be able to construct arbitrary
-   stretches of blocks before committing them. This
-   function can lookup prevBocks and prevTxOuts in
-   both the db and in blocks/txout constructed within
-   it."
-  [db start-idx blks]
-  (let [blk->tempid (atom {})
-        txout->tempid (atom {})]
-    (for [[blk-idx blk] (map vector (iterate inc start-idx) blks)]
-      (let [blk-tempid (db/gen-tempid)]
-        ;; Add this blk's tempid to blk lookup.
-        (swap! blk->tempid
-               conj
-               [(seq (:block/hash blk)) blk-tempid])
-        ;; Construct blk
-        (merge
-         ;; Lookup prevBlock in db or in ->tempid map.
-         ;; TODO: nil should fail during import.
-         (when-let [prev-id
-                    (or (:db/id (db/find-blk-by-hash2
-                                 db (:prevBlockHash blk)))
-                        (@blk->tempid (seq (:prevBlockHash blk))))]
-           {:block/prevBlock prev-id})
-         {:db/id blk-tempid
-          :block/idx blk-idx
-          :block/hash (:block/hash blk)
-          :block/ver (:block/ver blk)
-          :block/merkleRoot (:block/merkleRoot blk)
-          :block/time (:block/time blk)
-          :block/bits (:block/bits blk)
-          :block/nonce (:block/nonce blk)
-          ;; Construct txns
-          :block/txns (map-indexed
-                       (fn [txn-idx txn]
-                         (let [txn-tempid (db/gen-tempid)
-                               ;; We need this in txout
-                               txn-hash (:txn/hash txn)]
-                           {:db/id txn-tempid
-                            :txn/hash txn-hash
-                            :txn/ver (:txn/ver txn)
-                            :txn/lockTime (:txn/lockTime txn)
-                            :txn/idx txn-idx
-                            :txn/txOuts (map-indexed
-                                         (fn [txout-idx txout]
-                                           (let [txout-tempid (db/gen-tempid)]
-                                             ;; Add this txout to txout-tempid
-                                             ;; lookup so txin's constructor can
-                                             ;; link :txIn/prevTxOut to it.
-                                             (swap! txout->tempid
-                                                    conj
-                                                    ;; Gotta remember to seq the
-                                                    ;; bytes for comparison.
-                                                    [{:txn/hash (seq txn-hash)
-                                                      :txOut/idx txout-idx}
-                                                     txout-tempid])
-                                             ;; Construct txOut
-                                             {:db/id txout-tempid
-                                              :txOut/idx txout-idx
-                                              :txOut/value (long (:txOut/value txout))
-                                              :txOut/script (:txOut/script txout)}))
-                                         (:txn/txOuts txn))
-                            :txn/txIns (map-indexed
-                                        (fn [txin-idx txin]
-                                          (let [txin-tempid (db/gen-tempid)
-                                                prev-txnhash (-> txin
-                                                                 :prevTxOut
-                                                                 :txn/hash)
-                                                prev-txoutidx (-> txin
-                                                                  :prevTxOut
-                                                                  :txOut/idx)]
-                                            (let [txin-dtx (merge
-                                                            {:db/id txin-tempid
-                                                             :txIn/idx txin-idx
-                                                             :txIn/sequence (:txIn/sequence txin)
-                                                             :txIn/script (:txIn/script txin)}
-                                                            (when-let [prev-id
-                                                                       (or
-                                                                        ;; First lookup in db
-                                                                        (:db/id (db/find-txout-by-hash-and-idx2
-                                                                                 db prev-txnhash prev-txoutidx))
-                                                                        ;; Then lookup in txout->tempid
-                                                                        (@txout->tempid
-                                                                         ;; l0l, gotta remember to seq the
-                                                                         ;; bytes.
-                                                                         {:txn/hash (seq prev-txnhash)
-                                                                          :txOut/idx prev-txoutidx}))]
-                                                              {:txIn/prevTxOut prev-id}))]
-                                              txin-dtx)))
-                                        (:txn/txIns txn))}))
-                       (:block/txns blk))})))))
-
-(defn spinner
-  "This is important."
-  [spinner-type interval-n current-n]
-  (let [states (case spinner-type
-                 :a [\⣾ \⣽ \⣻ \⢿ \⡿ \⣟ \⣯ \⣷]
-                 :b [\← \↖ \↑ \↗ \→ \↘ \↓ \↙]
-                 :c [\◰ \◳ \◲ \◱]
-                 :d [\◴ \◷ \◶ \◵]
-                 :e [\◐ \◓ \◑ \◒]
-                 :f [\. \o \O \@ \*]
-                 :g ["◡◡" "⊙⊙" "◠◠"]
-                 :h [\⠁ \⠂ \⠄ \⡀ \⢀ \⠠ \⠐ \⠈]
-                 :crux [\┤ \┘ \┴ \└ \├ \┌ \┬ \┐]
-                 :piston (map char [9609 9610 9611 9612 9613
-                                    9614 9615 9615 9614 9613
-                                    9612 9611 9610 9609]))
-        state-count (count states)]
-    (as-> (mod current-n (* state-count interval-n)) _
-          (quot _ interval-n)
-          (nth states _))))
-
-(defn round-down [interval idx]
-  (- idx (mod idx interval)))
-
-(defn import-dat []
-  ;; (println "Recreating database...")
-  ;; (db/create-database)
-  ;; (println "Creating coinbase txn...")
-  ;; (db/create-coinbase-txn)
-  (let [blk-count (db/get-block-count)
-        per-batch 1
-        start-idx (round-down per-batch blk-count)
-        counter (atom 0)]
-    (println "Blocks in database:" blk-count)
-    (println "Transacting...")
-    (reduce (fn [db blk-frame-batch]
-              (let [curr-count (-> (swap! counter inc)
-                                   (* per-batch)
-                                   (+ blk-count))
-                    dtx-batch (construct-blks db
-                                              curr-count
-                                              blk-frame-batch)]
-                (print "  " curr-count "\r") (flush)
-                (->> @(d/transact-async (db/get-conn) dtx-batch)
-                     :db-after)))
-            (db/get-db)
-            (->> (lazy-blkdat-frames "blk00000.dat")
-                 ;(take 10000)
-                 (map :block)
-                 (drop start-idx)
-                 (partition-all per-batch)
-                 (pmap doall))))
-  (println "\nBlocks in database:" (db/get-block-count)))
+;;    I wanted a way to be able to construct arbitrary
+;;    stretches of blocks before committing them. This
+;;    function can lookup prevBocks and prevTxOuts in
+;;    both the db and in blocks/txout constructed within
+;;    it."
+;;   [db start-idx blks]
+;;   (let [blk->tempid (atom {})
+;;         txout->tempid (atom {})]
+;;     (for [[blk-idx blk] (map vector (iterate inc start-idx) blks)]
+;;       (let [blk-tempid (db/gen-tempid)]
+;;         ;; Add this blk's tempid to blk lookup.
+;;         (swap! blk->tempid
+;;                conj
+;;                [(seq (:block/hash blk)) blk-tempid])
+;;         ;; Construct blk
+;;         (merge
+;;          ;; Lookup prevBlock in db or in ->tempid map.
+;;          ;; TODO: nil should fail during import.
+;;          (when-let [prev-id
+;;                     (or (:db/id (db/find-blk-by-hash2
+;;                                  db (:prevBlockHash blk)))
+;;                         (@blk->tempid (seq (:prevBlockHash blk))))]
+;;            {:block/prevBlock prev-id})
+;;          {:db/id blk-tempid
+;;           :block/idx blk-idx
+;;           :block/hash (:block/hash blk)
+;;           :block/ver (:block/ver blk)
+;;           :block/merkleRoot (:block/merkleRoot blk)
+;;           :block/time (:block/time blk)
+;;           :block/bits (:block/bits blk)
+;;           :block/nonce (:block/nonce blk)
+;;           ;; Construct txns
+;;           :block/txns (map-indexed
+;;                        (fn [txn-idx txn]
+;;                          (let [txn-tempid (db/gen-tempid)
+;;                                ;; We need this in txout
+;;                                txn-hash (:txn/hash txn)]
+;;                            {:db/id txn-tempid
+;;                             :txn/hash txn-hash
+;;                             :txn/ver (:txn/ver txn)
+;;                             :txn/lockTime (:txn/lockTime txn)
+;;                             :txn/idx txn-idx
+;;                             :txn/txOuts (map-indexed
+;;                                          (fn [txout-idx txout]
+;;                                            (let [txout-tempid (db/gen-tempid)]
+;;                                              ;; Add this txout to txout-tempid
+;;                                              ;; lookup so txin's constructor can
+;;                                              ;; link :txIn/prevTxOut to it.
+;;                                              (swap! txout->tempid
+;;                                                     conj
+;;                                                     ;; Gotta remember to seq the
+;;                                                     ;; bytes for comparison.
+;;                                                     [{:txn/hash (seq txn-hash)
+;;                                                       :txOut/idx txout-idx}
+;;                                                      txout-tempid])
+;;                                              ;; Construct txOut
+;;                                              {:db/id txout-tempid
+;;                                               :txOut/idx txout-idx
+;;                                               :txOut/value (long (:txOut/value txout))
+;;                                               :txOut/script (:txOut/script txout)}))
+;;                                          (:txn/txOuts txn))
+;;                             :txn/txIns (map-indexed
+;;                                         (fn [txin-idx txin]
+;;                                           (let [txin-tempid (db/gen-tempid)
+;;                                                 prev-txnhash (-> txin
+;;                                                                  :prevTxOut
+;;                                                                  :txn/hash)
+;;                                                 prev-txoutidx (-> txin
+;;                                                                   :prevTxOut
+;;                                                                   :txOut/idx)]
+;;                                             (let [txin-dtx (merge
+;;                                                             {:db/id txin-tempid
+;;                                                              :txIn/idx txin-idx
+;;                                                              :txIn/sequence (:txIn/sequence txin)
+;;                                                              :txIn/script (:txIn/script txin)}
+;;                                                             (when-let [prev-id
+;;                                                                        (or
+;;                                                                         ;; First lookup in db
+;;                                                                         (:db/id (db/find-txout-by-hash-and-idx2
+;;                                                                                  db prev-txnhash prev-txoutidx))
+;;                                                                         ;; Then lookup in txout->tempid
+;;                                                                         (@txout->tempid
+;;                                                                          ;; l0l, gotta remember to seq the
+;;                                                                          ;; bytes.
+;;                                                                          {:txn/hash (seq prev-txnhash)
+;;                                                                           :txOut/idx prev-txoutidx}))]
+;;                                                               {:txIn/prevTxOut prev-id}))]
+;;                                               txin-dtx)))
+;;                                         (:txn/txIns txn))}))
+;;                        (:block/txns blk))})))))

@@ -214,7 +214,7 @@
  {:db/id #db/id[:db.part/db]
   :db.install/_attribute :db.part/db
   :db/ident       :addr/b58
-  :db.unique      :db.unique/identity
+  :db/unique      :db.unique/identity
   :db/valueType   :db.type/string
   :db/cardinality :db.cardinality/one}
  ;; :addr/txIns (many Refs)

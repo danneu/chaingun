@@ -2,8 +2,8 @@
   (:require
    [hyzhenhok.util :refer :all]
    [hyzhenhok.db :as db]
-   [hyzhenhok.codec :as codec]
-   [hyzhenhok.codec2 :as codec2]
+   ;[hyzhenhok.codec :as codec]
+   ;[hyzhenhok.codec2 :as codec2]
    [hyzhenhok.seed :as seed]
    [hyzhenhok.explorer :as explorer])
   (:gen-class))
@@ -24,24 +24,21 @@
   (println "Done.")
   (System/exit 0))
 
-(defmethod execute "db:import-dat" [_]
-  (codec/import-dat)
-  (System/exit 0))
-
-(defmethod execute "bench1" [_]
-  (seed/seed)
-  (System/exit 0))
+;; (defmethod execute "bench1" [_]
+;;   (seed/seed)
+;;   (System/exit 0))
 
 (defmethod execute "db:import-dat2" [_]
-  (codec2/import-dat)
+  ;(codec2/import-dat)
+  (seed/import-dat)
   (System/exit 0))
 ;; (defmethod execute "db:seed00000" [_]
 ;;   (codec/seed-db)
 ;;   (System/exit 0))
 
-(defmethod execute "demo:seed" [_]
-  (codec/seed-db-demo)
-  (System/exit 0))
+;; (defmethod execute "demo:seed" [_]
+;;   (codec/seed-db-demo)
+;;   (System/exit 0))
 
 (defmethod execute "explorer" [[_ & [port & _]]]
   (let [port (Integer. (or port "3000"))]

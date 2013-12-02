@@ -16,11 +16,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (d/q '[:find ?e
-;;        :where
-;;        [?e :block/hash]
-;;        []])
-
 (defn parent-txn
   "Find parent-txn for given txIn or txOut entity."
   [txIO]
@@ -175,6 +170,10 @@
   ([] (get-txn-count (get-db)))
   ([db] (count (seq (d/datoms db :avet :txn/hash)))))
 
+(defn get-addr-count
+  ([] (get-addr-count (get-db)))
+  ([db] (count (seq (d/datoms db :avet :addr/b58)))))
+
 (defn find-block-by-idx
   ([idx] (find-block-by-idx (get-db) idx))
   ([db idx]
@@ -183,19 +182,13 @@
           ffirst
           (d/entity db))))
 
-;; (defn find-txn-by-hash
-;;   "Find txn by hash (String or ByteArray)."
-;;   [hash]
-;;   (let [hash (if (string? hash)
-;;                (hex->bytes hash)
-;;                hash)]
-;;     (qe '[:find ?e
-;;           :in $ ?given-hash
-;;           :where
-;;           [?e :txn/hash ?hash]
-;;           [(java.util.Arrays/equals
-;;             ^bytes ?hash ^bytes ?given-hash)]]
-;;         (get-db) hash)))
+(defn find-addr
+  ([b58] (find-addr (get-db) b58))
+  ([db b58]
+     (->> (d/datoms db :avet :addr/b58 b58)
+          (d/q '[:find ?e :where [?e]])
+          ffirst
+          (d/entity db))))
 
 (defn find-txn-by-hash
   "60x faster than a naive datalog query."
@@ -206,37 +199,6 @@
           (d/q '[:find ?e :where [ ?e _]])
           ffirst
           (d/entity db))))
-
-(defn find-txout-by-hash-and-idx [db hash idx]
-  (let [hash (if (string? hash)
-               (hex->bytes hash)
-               hash)]
-    (qe '[:find ?txout
-          :in $ ?given-hash ?idx
-          :where
-          [?txn :txn/hash ?hash]
-          [(java.util.Arrays/equals ^bytes ?hash
-                                    ^bytes ?given-hash)]
-          [?txn :txn/txOuts ?txout]
-          [?txout :txOut/idx ?idx]]
-        db hash idx)))
-
-(defn get-block-idx
-  "Slow ad-hoc way to get the idx of a block
-   within the blockchain."
-  [block]
-  (if (genesis-block? block)
-    0
-    (only (d/q '[:find (count ?e)
-                 :in $ ?time
-                 :where
-                 [?e :block/time ?v]
-                 [(< ?v ?time)]]
-               (get-db) (:block/time block)))))
-
-;; (get-block-idx (hex->bytes "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"))
-
-;; (time (get-block-idx (find-blk-by-hash2 (hex->bytes "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee"))))
 
 ;; Shouldn't be in db ns. There should be some sort
 ;; of `models` namespace for functions on entities/map
@@ -315,6 +277,7 @@
           :txn/txOuts
           (filter #(= idx (:txOut/idx %)))
           first)))
+(def find-txout-by-hash-and-idx find-txout-by-hash-and-idx2)
 
 ;; (def original (d/entity (get-db) 17592186654920))
 
