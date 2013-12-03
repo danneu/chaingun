@@ -1,10 +1,10 @@
-(ns hyzhenhok.explorer
+(ns chaingun.explorer
   (:use [hiccup core def element form page util])
-  (:require [hyzhenhok.db :as db]
-            [hyzhenhok.util :refer :all]
-            [hyzhenhok.script :as script]
-            [hyzhenhok.codec2 :as codec]
-            [hyzhenhok.models :as models]
+  (:require [chaingun.db :as db]
+            [chaingun.util :refer :all]
+            [chaingun.script :as script]
+            [chaingun.codec2 :as codec]
+            [chaingun.models :as models]
             [compojure.core :refer :all]
             [clojure.edn :as edn]
             [clojure.string :as str]

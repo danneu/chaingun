@@ -1,16 +1,16 @@
-(defproject hyzhenhok "0.1.0-SNAPSHOT"
+(defproject chaingun "0.1.0-SNAPSHOT"
   :description "a fledgling bitcoin implementation written in clojure."
-  :url "http://github.com/danneu/hyzhenhok"
+  :url "http://github.com/danneu/chaingun"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :jvm-opts ["-XX:MaxPermSize=128m"
              "-Xmx1g"
              ;"-Djava.awt.headless=true"
              ]
-  :uberjar-name "../hyzhenhok-standalone.jar"
-  :main hyzhenhok.cli
-  :aot [hyzhenhok.cli]
-  :ring {:handler hyzhenhok.explorer/app}
+  :uberjar-name "../chaingun-standalone.jar"
+  :main chaingun.cli
+  :aot [chaingun.cli]
+  :ring {:handler chaingun.explorer/app}
   :repositories {"sonatype-oss-public"
                  "https://oss.sonatype.org/content/groups/public/"}
   ;:global-vars {*warn-on-reflection* true}
@@ -26,7 +26,7 @@
                  [org.clojure/core.match "0.2.0"]
                  [org.clojure/math.numeric-tower "0.0.2"]
                  ;[org.clojure/tools.cli "0.2.4"]
-                 ;; For hyzhenhok.explorer:
+                 ;; For chaingun.explorer:
                  [ring/ring-jetty-adapter "1.2.1"]
                  [clj-time "0.6.0"]
                  [compojure "1.1.6"]

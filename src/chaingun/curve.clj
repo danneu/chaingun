@@ -1,6 +1,6 @@
-(ns hyzhenhok.curve
+(ns chaingun.curve
   (:require
-   [hyzhenhok.util :refer :all]
+   [chaingun.util :refer :all]
    [clojure.core.typed :refer :all])
   (:import
    [org.bouncycastle.math.ec

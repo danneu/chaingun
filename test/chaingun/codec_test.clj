@@ -1,9 +1,9 @@
-(ns hyzhenhok.codec-test
+(ns chaingun.codec-test
   (:require [expectations :refer :all]
             [clojure.string :as str]
-            [hyzhenhok.db :as db]
-            [hyzhenhok.codec :refer :all]
-            [hyzhenhok.util :refer :all])
+            [chaingun.db :as db]
+            [chaingun.codec :refer :all]
+            [chaingun.util :refer :all])
   (:import [java.util Date]))
 
 

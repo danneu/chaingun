@@ -1,7 +1,7 @@
-(ns hyzhenhok.models
-  (:require [hyzhenhok.util :refer :all]
-            [hyzhenhok.toy :as toy]
-            [hyzhenhok.script :as script]
+(ns chaingun.models
+  (:require [chaingun.util :refer :all]
+            [chaingun.toy :as toy]
+            [chaingun.script :as script]
             ))
 
 ;;;; This namespace contains business functions

@@ -1,17 +1,17 @@
-(ns hyzhenhok.codec2
-  (:require [hyzhenhok.util :refer :all
+(ns chaingun.codec2
+  (:require [chaingun.util :refer :all
              :exclude [contiguous byte-count]]
-            [hyzhenhok.crypto :as crypto]
+            [chaingun.crypto :as crypto]
             [clojure.java.io :as io]
             [gloss.io :refer :all]
             [gloss.core :refer :all]
             [clojure.string :as str]
             ;; Ideally these wouldn't be here.
-            [hyzhenhok.db :as db]
+            [chaingun.db :as db]
             [datomic.api :as d]
             ;[clojure.core.typed :refer :all]
             [clojure.test :refer :all]
-            ;[hyzhenhok.seed :as seed]
+            ;[chaingun.seed :as seed]
             )
   (:import [clojure.lang IPersistentMap PersistentArrayMap]
            [java.util Date]

@@ -1,9 +1,9 @@
-(ns hyzhenhok.key-test
+(ns chaingun.key-test
   (:require [expectations :refer :all]
-            [hyzhenhok.key :refer :all]
-            [hyzhenhok.curve :as curve]
-            [hyzhenhok.util :refer :all]
-            [hyzhenhok.crypto :as crypto]))
+            [chaingun.key :refer :all]
+            [chaingun.curve :as curve]
+            [chaingun.util :refer :all]
+            [chaingun.crypto :as crypto]))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ;; Priv transcoding ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -174,7 +174,7 @@
 
 
 ;; ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; ;; ;; Hyzhenhok tests ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ;; ;; Chaingun tests ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; ;; Test: canonical?

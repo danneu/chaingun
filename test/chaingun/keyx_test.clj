@@ -1,7 +1,7 @@
-(ns hyzhenhok.keyx-test
-  (:require [hyzhenhok.keyx :refer :all]
+(ns chaingun.keyx-test
+  (:require [chaingun.keyx :refer :all]
             [expectations :refer :all]
-            [hyzhenhok.util :refer :all]))
+            [chaingun.util :refer :all]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; get-pubkey-format
@@ -148,7 +148,8 @@
 
 (let [test-pair (generate-pair)]
   ;; privkey and pubkey convert into same address
-  (expect (->address (:privkey test-pair))
+  (expect
+    (->address (:privkey test-pair))
     (->address (:pubkey test-pair)))
 
   ;; pubkey compressed by default

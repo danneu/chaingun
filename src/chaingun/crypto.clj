@@ -1,6 +1,6 @@
-(ns hyzhenhok.crypto
+(ns chaingun.crypto
   (:require
-   [hyzhenhok.util :refer :all]
+   [chaingun.util :refer :all]
    [clojure.core.typed :refer :all])
   (:import
    [java.security

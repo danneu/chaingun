@@ -1,6 +1,6 @@
-(ns hyzhenhok.toy
-  (:require [hyzhenhok.util :refer :all]
-            [hyzhenhok.db :as db]
+(ns chaingun.toy
+  (:require [chaingun.util :refer :all]
+            [chaingun.db :as db]
             [datomic.api :as d]))
 
 ;;;; This namespace contains convenient entities to play

@@ -1,7 +1,7 @@
-(ns hyzhenhok.codec
+(ns chaingun.codec
   (:require
-   [hyzhenhok.util :refer :all]
-   [hyzhenhok.crypto :as crypto]
+   [chaingun.util :refer :all]
+   [chaingun.crypto :as crypto]
    [clojure.java.io :as io]
    [datomic.api :as d]
    [clojure.java.io :as io]
@@ -9,7 +9,7 @@
     :exclude [contiguous encode decode]]
    [gloss.core :refer :all :exclude [byte-count]]
    [clojure.string :as str]
-   [hyzhenhok.db :as db]
+   [chaingun.db :as db]
    [clojure.core.typed :refer :all])
   (:import
    [clojure.lang
@@ -679,7 +679,7 @@
                  :ip "8.0.8.0"
                  :port 8080}
      :nonce (generate-nonce 64)
-     :user-agent "/hyzhenhok:0.0.1/"
+     :user-agent "/chaingun:0.0.1/"
      :start-height start-height
      :relay true}
     {:command :version}))
@@ -1247,7 +1247,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; hyzhenhok.codec is becoming a massive junk drawer.
+;; chaingun.codec is becoming a massive junk drawer.
 ;; I really need to reorganize this once i make the
 ;; kind of progress i'll be happy with.
 

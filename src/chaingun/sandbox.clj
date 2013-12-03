@@ -1,8 +1,8 @@
-(ns hyzhenhok.sandbox
-  (:require [hyzhenhok.util :refer :all]
-            ;[hyzhenhok.script :refer :all]
-            ;[hyzhenhok.codec :as codec]
-            ;[hyzhenhok.crypto :as crypto]
+(ns chaingun.sandbox
+  (:require [chaingun.util :refer :all]
+            ;[chaingun.script :refer :all]
+            ;[chaingun.codec :as codec]
+            ;[chaingun.crypto :as crypto]
             ))
 
 ;; ;; 1. Execute :txIn/script (current txn) to get sig and pubkey

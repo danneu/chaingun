@@ -1,4 +1,4 @@
-(ns hyzhenhok.util
+(ns chaingun.util
   (:require
    [clojure.math.numeric-tower]
    [potemkin :refer [import-fn import-vars]]

@@ -1,11 +1,11 @@
-(ns hyzhenhok.cli
+(ns chaingun.cli
   (:require
-   [hyzhenhok.util :refer :all]
-   [hyzhenhok.db :as db]
-   ;[hyzhenhok.codec :as codec]
-   ;[hyzhenhok.codec2 :as codec2]
-   [hyzhenhok.seed :as seed]
-   [hyzhenhok.explorer :as explorer])
+   [chaingun.util :refer :all]
+   [chaingun.db :as db]
+   ;[chaingun.codec :as codec]
+   ;[chaingun.codec2 :as codec2]
+   [chaingun.seed :as seed]
+   [chaingun.explorer :as explorer])
   (:gen-class))
 
 ;; Command handler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -51,5 +51,5 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn -main [& args]
-  (println "Hyzhenhok launched.\n")
+  (println "Chaingun launched.\n")
   (execute args))

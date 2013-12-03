@@ -1,11 +1,11 @@
-(ns hyzhenhok.db
+(ns chaingun.db
   (:require
    [clojure.java.io :as io]
    [clojure.core.typed :as t]
    [clojure.string :as str]
    [datomic.api :as d]
    [gloss.io]
-   [hyzhenhok.util :refer :all])
+   [chaingun.util :refer :all])
   (:import
    [datomic Util]
    [java.util Date]))
@@ -52,7 +52,7 @@
       (transact-all conn "resources/schema.edn")
       conn)))
 
-(def uri "datomic:free://localhost:4334/hyzhenhok")
+(def uri "datomic:free://localhost:4334/chaingun")
 
 (defn create-database
   "Recreates db with schema, returns db connection."
@@ -149,9 +149,9 @@
         :where [?e ?attr ?val]]
       db attr val))
 
-;; Created in hyzhenhok.codec, but to avoid
+;; Created in chaingun.codec, but to avoid
 ;; circular dependency, hard-code it here for now...
-;; Need to extract part of hyzhenhok.codec into a common ns.
+;; Need to extract part of chaingun.codec into a common ns.
 (def genesis-hash
   (hex->bytes "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"))
 
@@ -359,7 +359,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Deprecate this function in favor of the more-hilarious
-;; constructor hyzhenhok.codec/blk-dtxs.
+;; constructor chaingun.codec/blk-dtxs.
 ;;
 ;; This constructor makes the mistake of using `d/with` in
 ;; an effort to lookup txouts within the datomic-transaction

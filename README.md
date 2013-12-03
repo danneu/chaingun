@@ -1,4 +1,4 @@
-# hyzhenhok
+# chaingun
 
 A highly experimental/unorganized fledgling Bitcoin implementation written in Clojure. A sandbox for my brain.
 
@@ -20,7 +20,7 @@ Predominantly a test-bed for hilarious abstractions and unfamiliar libraries as 
 ## Prerequisites
 
 1. Java JDK version 6 or later.
-2. To compile hyzhenhok into a `.jar`, you'll need Clojure's build tool: [Leiningen](https://github.com/technomancy/leiningen)
+2. To compile chaingun into a `.jar`, you'll need Clojure's build tool: [Leiningen](https://github.com/technomancy/leiningen)
 
 ## Install & Import Demo
 
@@ -28,26 +28,26 @@ Predominantly a test-bed for hilarious abstractions and unfamiliar libraries as 
 
 I'll walk through the process of:
 
-1. Downloading and compiling hyzhenhok
+1. Downloading and compiling chaingun
 2. Setting up Datomic (database)
 3. Parsing the first 300 blocks of the blockchain into Datomic
-4. Exploring the local blockchain with hyzhenhok's explorer.
+4. Exploring the local blockchain with chaingun's explorer.
 
-Clone the hyzhenhok source :
+Clone the chaingun source :
 
-    $ git clone https://github.com/danneu/hyzhenhok.git ~/hyzhenhok
+    $ git clone https://github.com/danneu/chaingun.git ~/chaingun
 
-(For the rest of this guide, I'll now pretend `~/hyzhenhok` exists)
+(For the rest of this guide, I'll now pretend `~/chaingun` exists)
 
-Compile hyzhenhok:
+Compile chaingun:
 
     $ lein uberjar
 
-(It should say that it created `~/hyzhenhok/hyzhenhok-standalone.jar`)
+(It should say that it created `~/chaingun/chaingun-standalone.jar`)
 
 Download Datomic:
 
-- [Download the lastest datomic-free-x.x.xxxx.zip](https://my.datomic.com/downloads/free) (~40mb) - You can just unzip it into `~/hyzhenhok/`.
+- [Download the lastest datomic-free-x.x.xxxx.zip](https://my.datomic.com/downloads/free) (~40mb) - You can just unzip it into `~/chaingun/`.
 
 Launch the Datomic transactor in another terminal window:
 
@@ -61,9 +61,9 @@ You should see output that looks something like:
 
 (The default config is fine for this 300-block demo.)
 
-With the Datomic transactor running in another terminal, tell hyzhenhok to seed the db:
+With the Datomic transactor running in another terminal, tell chaingun to seed the db:
 
-    $ java -jar hyzhenhok-standalone.jar db:seed
+    $ java -jar chaingun-standalone.jar db:seed
 
 (If it doesn't work, ensure the Datomic transactor is actually running from previous step)
 
@@ -79,7 +79,7 @@ You should see this output:
 
 Launch the local blockchain explorer:
 
-    $ java -jar hyzhenhok-standalone.jar explorer
+    $ java -jar chaingun-standalone.jar explorer
     Launching database explorer at http://localhost:3000/...
 
 You should now be able to open [http://localhost:3000/](http://localhost:3000/) in your browser and browse the first 300 blocks of the Bitcoin network.

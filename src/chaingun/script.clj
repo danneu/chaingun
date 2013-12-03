@@ -1,11 +1,11 @@
-(ns hyzhenhok.script
+(ns chaingun.script
   (:require
-   [hyzhenhok.util :refer :all]
-   [hyzhenhok.crypto :as crypto]
-   [hyzhenhok.codec2 :as codec]
-   [hyzhenhok.keyx :as key]
+   [chaingun.util :refer :all]
+   [chaingun.crypto :as crypto]
+   [chaingun.codec2 :as codec]
+   [chaingun.keyx :as key]
    [clojure.core.match :as match]
-   [hyzhenhok.db :as db]
+   [chaingun.db :as db]
    [datomic.api :as d]
    [clojure.core.typed :refer :all])
   (:import

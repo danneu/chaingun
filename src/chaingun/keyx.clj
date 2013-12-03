@@ -1,8 +1,8 @@
-(ns hyzhenhok.keyx
+(ns chaingun.keyx
   (:require
-   [hyzhenhok.curve :as curve]
-   [hyzhenhok.util :refer :all]
-   [hyzhenhok.crypto :as crypto]
+   [chaingun.curve :as curve]
+   [chaingun.util :refer :all]
+   [chaingun.crypto :as crypto]
    [gloss.io :refer :all
     :exclude [contiguous encode decode]]
    [gloss.core :refer :all
@@ -79,7 +79,7 @@
 
 (Security/insertProviderAt (BouncyCastleProvider.) 1)
 
-;; This namespace will be the successor to hyzhenhok.key.
+;; This namespace will be the successor to chaingun.key.
 ;; - I'm growing this namespace organically as I need it.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -316,7 +316,7 @@
        :pubkey (compress (->Point pub))})))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Signature (Move to hyzhenhok.sig)
+;; Signature (Move to chaingun.sig)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Either HexString or ByteArray

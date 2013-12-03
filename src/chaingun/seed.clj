@@ -1,12 +1,12 @@
-(ns hyzhenhok.seed
+(ns chaingun.seed
   (:require [datomic.api :as d]
-            [hyzhenhok.db :as db]
+            [chaingun.db :as db]
             [gloss.io]
             [clojure.string :as str]
-            [hyzhenhok.util :refer :all]
-            [hyzhenhok.codec2 :as codec]
+            [chaingun.util :refer :all]
+            [chaingun.codec2 :as codec]
             [clojure.java.io :as io]
-            [hyzhenhok.script :as script]))
+            [chaingun.script :as script]))
 
 (defn resource-bytes
   "Returns file contents as a byte-array.

@@ -1,8 +1,8 @@
-(ns hyzhenhok.key
+(ns chaingun.key
   (:require
-   [hyzhenhok.curve :as curve]
-   [hyzhenhok.util :refer :all]
-   [hyzhenhok.crypto :as crypto]
+   [chaingun.curve :as curve]
+   [chaingun.util :refer :all]
+   [chaingun.crypto :as crypto]
    [clojure.test :refer [is]]
    [gloss.io :refer :all
     :exclude [contiguous encode decode]]

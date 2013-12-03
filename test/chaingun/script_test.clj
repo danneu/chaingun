@@ -1,12 +1,12 @@
-(ns hyzhenhok.script-test
+(ns chaingun.script-test
   (:require [expectations :refer :all]
-            [hyzhenhok.script :refer :all]
-            [hyzhenhok.util :refer :all]
-            [hyzhenhok.db :as db]
-            [hyzhenhok.keyx :as key]
-            [hyzhenhok.codec2 :as codec2]
-            [hyzhenhok.codec2 :as codec]
-            [hyzhenhok.crypto :as crypto]
+            [chaingun.script :refer :all]
+            [chaingun.util :refer :all]
+            [chaingun.db :as db]
+            [chaingun.keyx :as key]
+            [chaingun.codec2 :as codec2]
+            [chaingun.codec2 :as codec]
+            [chaingun.crypto :as crypto]
             [datomic.api :as d]
             [clojure.string :as str]))
 
@@ -268,11 +268,11 @@
 ;;         ;; Couldn't get this to work
 ;;         ;;   {:txncopy _
 ;;         ;;    :hashtype 1}
-;;         ;;   (hyzhenhok.codec/encode txncopy-codec _)
+;;         ;;   (chaingun.codec/encode txncopy-codec _)
 ;;         ;; So I'll just add the hashtype bytes myself.
 
 ;;         (codec2/encode-txn _)
-;;         ;--(hyzhenhok.codec/decode hyzhenhok.codec/TxnCodec _)
+;;         ;--(chaingun.codec/decode chaingun.codec/TxnCodec _)
 ;;         )))
 
 ;; (-> (codec2/decode-txn subscript-bytes)
@@ -315,11 +315,11 @@
 ;;         ;; Couldn't get this to work
 ;;         ;;   {:txncopy _
 ;;         ;;    :hashtype 1}
-;;         ;;   (hyzhenhok.codec/encode txncopy-codec _)
+;;         ;;   (chaingun.codec/encode txncopy-codec _)
 ;;         ;; So I'll just add the hashtype bytes myself.
 
 ;;         (codec2/encode-txn _)
-;;         ;--(hyzhenhok.codec/decode hyzhenhok.codec/TxnCodec _)
+;;         ;--(chaingun.codec/decode chaingun.codec/TxnCodec _)
 ;;         )))
 
 ;; (-> (codec2/decode-txn subscript-bytes)
