@@ -6,6 +6,12 @@
 
 ;;;; This namespace contains business functions
 ;;;; on datomic db entities.
+;;;;
+;;;; Should prob be named 'entities', not models.
+;;;;
+;;;; I really like this namespace - the idea of
+;;;; reducing func i/o to entities makes it easy
+;;;; to avoid circular deps.
 
 ;; TODO: Move entity-type stuff here.
 
@@ -29,6 +35,9 @@
 
 (defn genesis-block? [blk]
   (zero? (:block/idx blk)))
+
+(defn parent-block [tx]
+  (first (:block/_txns tx)))
 
 ;; txout
 

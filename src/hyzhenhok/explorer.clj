@@ -84,7 +84,18 @@
 (defn show-txn [txn]
   (html
 
-   ;; Page header ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+   ;; Breadcrumbs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+   [:ol.breadcrumb
+    [:li (link-to "/" "Main chain")]
+    [:li
+     (let [block (models/parent-block txn)]
+       (link-to (url "/blocks/" (-> (:block/hash block)
+                                    bytes->hex))
+                (str "Block " (:block/idx block))))]
+    [:li.active "Tx " (:txn/idx txn)]]
+
+   ;; Page header ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
    [:h1 "Tx "
     [:small (-> (:txn/hash txn) bytes->hex)]
@@ -99,9 +110,7 @@
                                   first
                                   :block/hash)]
             (let [block-hex (bytes->hex block-hash)]
-              (list
-               (link-to (url "/blocks/" block-hex) block-hex)
-               " (tx #" (:txn/idx txn) ")"))
+              (link-to (url "/blocks/" block-hex) block-hex))
             "--")]]
     [:tr
      [:td "Version"]
@@ -147,6 +156,11 @@
 
 (defn show-block [blk]
   (html
+
+   ;; Breadcrumbs
+   [:ol.breadcrumb
+    [:li (link-to "/" "Main chain")]
+    [:li.active "Block " (:block/idx blk)]]
 
    ;; Blockchain pagination ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
