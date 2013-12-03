@@ -6,6 +6,10 @@
 ;;;; This namespace contains convenient entities to play
 ;;;; with while I write code.
 
+;; This block has 2 tx, the latter w/ pay2addr and pay2pub txouts.
+(defn blk [] (-> (db/find-block-by-idx 37503)
+                 d/touch))
+
 (defn first-addr []
   (-> (db/find-addr "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
       d/touch))
