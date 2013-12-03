@@ -292,7 +292,7 @@
 (defn buf->bytes
   "Extract a unified byte-array from a seq of ByteBuffers."
   [buf]
-  (if (= 0 (byte-count buf))
+  (if (zero? (byte-count buf))
     (byte-array 0)
     (let [buf' (contiguous buf)
           rem (.remaining ^ByteBuffer buf')

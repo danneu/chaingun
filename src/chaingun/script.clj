@@ -508,7 +508,7 @@
         ;; Pluck out txIn we're modifying
         target-txin (-> (filter #(= txin-idx (:txIn/idx %))
                                 all-txins)
-                        (first))
+                        first)
         other-txins (remove #(= txin-idx (:txIn/idx %))
                             all-txins)]
     (let [;; Update the txIn

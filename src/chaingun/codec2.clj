@@ -157,18 +157,15 @@
   (compile-frame
    :uint32-le
    ;; Pre-encode
-   (fn [bytes]
-     (bytes->unum bytes))
+   bytes->unum
    ;; Post-decode
-   (fn [n]
-     (num->bytes n))))
+   num->bytes))
 
 (defcodec HashCodec
   (compile-frame
    (finite-block 32)
    ;; Pre-encode (Flip to little endian)
-   (fn [bytes-be]
-     (reverse-bytes bytes-be))
+   reverse-bytes
    ;; Post-decode (Flip to big endian)
    (fn [heapbuf-le]
      (reverse-bytes (buf->bytes heapbuf-le)))))
