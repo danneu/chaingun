@@ -32,3 +32,12 @@
       :txn/txOuts
       first
       d/touch))
+
+;; Maybe these should go in db.
+
+(defn coinbase-tx []
+  (-> (db/find-txn-by-hash (byte-array 32))
+      d/touch))
+
+(defn coinbase-txout []
+  (db/find-txout-by-hash-and-idx (byte-array 32) 4294967295))
