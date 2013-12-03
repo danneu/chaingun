@@ -37,6 +37,6 @@ Walks through the process of:
 
 ### Local Blockchain Explorer
 
-![Block view](http://i.imgur.com/LlzQrwZ.png)
+![Block view](http://i.imgur.com/gLoJMG4.png)
 
-![Txn view](http://i.imgur.com/w8gHSth.png)
+![Tx view](http://i.imgur.com/16W4SWN.png)
