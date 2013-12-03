@@ -4,7 +4,8 @@
             [hyzhenhok.script :as script]
             ))
 
-;;;; This namespace contains business functions on entities.
+;;;; This namespace contains business functions
+;;;; on datomic db entities.
 
 ;; TODO: Move entity-type stuff here.
 
@@ -25,6 +26,9 @@
 
 (defn prev-txout [txin]
   (first (:txIn/_prevTxOut txin)))
+
+(defn genesis-block? [blk]
+  (zero? (:block/idx blk)))
 
 ;; txout
 

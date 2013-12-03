@@ -4,6 +4,7 @@
             [hyzhenhok.util :refer :all]
             [hyzhenhok.script :as script]
             [hyzhenhok.codec2 :as codec]
+            [hyzhenhok.models :as models]
             [compojure.core :refer :all]
             [clojure.edn :as edn]
             [clojure.string :as str]
@@ -17,6 +18,13 @@
 ;; the contents of the db.
 
 ;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn render-script [script]
+  (->> (for [item (script/parse script)]
+         (if (keyword? item)
+           [:span.label.label-info (str item)]
+           [:span.label.label-default (ubytes->hex item)]))
+       (interpose " ")))
 
 (defn satoshi->btc [satoshi-val]
   (-> (float satoshi-val)
@@ -65,6 +73,8 @@
        [:button.btn.btn-default {:type "submit"} "Search"]]]
 
      [:div template]
+
+
      ]]))
 
 ;; Templates ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -108,104 +118,32 @@
       [:div.panel-body {:style "overflow: scroll"}
        [:table.table.table-condensed
         [:tr
-         [:td "Prev output"]
-         [:td (let [prev-out (:txIn/prevTxOut txin)]
-                (str
-                 "Tx "
-                 (-> (:txn/_txOuts prev-out)
-                     first
-                     :txn/hash
-                     bytes->hex)
-                 ", Input " (:txIn/idx txin))
-                )]]
+         [:td "&larr; Prev output"]
+         [:td
+          (let [prev-out (:txIn/prevTxOut txin)]
+            (if (models/coinbase-txout? prev-out)
+              "(Coinbase)"
+              (let [prev-tx (models/parent-tx prev-out)
+                    prev-tx-hex (-> (:txn/hash prev-tx)
+                                    bytes->hex)]
+                (link-to (url "/txs/" prev-tx-hex)
+                         prev-tx-hex))))]]
         [:tr
-         [:td "Script (raw)"]
-         [:td (-> (:txIn/script txin)
-                  bytes->hex)]]
-        [:tr
-         [:td "Script (parsed)"]
-         [:td (-> (:txIn/script txin)
-                  (script/parse)
-                  prn-str)]]]]])
-
-   ;; (for [tx (sort-by :txn/idx (:block/txns blk))
-   ;;       :let [tx-hash (-> (:txn/hash tx) bytes->hex)]]
-   ;;   [:div.panel.panel-default
-   ;;    [:div.panel-heading
-   ;;     (:txn/idx tx) ". "
-   ;;     (link-to (url "/txs/" tx-hash) tx-hash)]
-   ;;    [:div.panel-body
-   ;;     [:div.row
-   ;;      [:div.col-xs-6
-   ;;       (if (zero? (:txn/idx tx))
-   ;;         "(Coinbase transaction)"
-   ;;         [:ul
-   ;;          (for [txin (:txn/txIns tx)
-   ;;                :let [addrs (->> (:txIn/prevTxOut txin)
-   ;;                                 :addr/_txOuts
-   ;;                                 (map :addr/b58))]
-   ;;                :when (not-empty addrs)
-   ;;                addr addrs]
-   ;;            [:li (link-to (url "/addrs/" addr) addr)])])]
-
+         [:td "Script"]
+         [:td (render-script (:txIn/script txin))]]]]])
 
    [:h2 "Outputs " [:small (count (:txn/txOuts txn))]]
 
-
-   [:hr]
-   [:h2 ":txn/txIns"]
-   [:table
-    (for [txin (sort-by :txIn/idx (:txn/txIns txn))]
-      (list
-       [:tr [:td ":txIn/idx"] [:td (:txIn/idx txin)]]
-       [:tr [:td ":txIn/script"] [:td (bytes->hex
-                                        (:txIn/script txin))]]
-       [:tr [:td ":txIn/script (parsed):"] [:td (prn-str
-                                                 (script/parse
-                                                  (bytes->ubytes
-                                                   (:txIn/script txin))))]]
-       [:tr
-        [:td ":txIn/sequence"]
-        [:td (:txIn/sequence txin)]]
-       [:tr
-        [:td ":txIn/prevTxOut"]
-        [:td (if-let [prev-txout (:txIn/prevTxOut txin)]
-               (let [txn (first (:txn/_txOuts prev-txout))]
-                 [:ul
-                  [:li ":txn/hash " (link-to
-                                      (url "/txns/"
-                                           (bytes->hex
-                                            (:txn/hash txn)))
-                                      (bytes->hex (:txn/hash txn)))]
-                  [:li ":txOut/idx " (:txOut/idx prev-txout)]
-                  (when (db/coinbase-txn? txn)
-                    "(Coinbase)")])
-               "--")]]))]
-   [:hr]
-   [:h2 ":txn/txOuts"]
-   [:table
-    (for [txout (sort-by :txOut/idx (:txn/txOuts txn))]
-      (list
-       [:tr [:td ":txOut/idx"] [:td (:txOut/idx txout)]]
-       [:tr
-        [:td ":txOut/value"]
-        [:td
-         (:txOut/value txout)
-         (str " ("
-              (satoshi->btc (:txOut/value txout))
-              " BTC)")]]
-       [:tr
-        [:td ":txOut/script"]
-        [:td
-         (bytes->hex (:txOut/script txout))]]
-       [:tr
-        [:td ":txOut/script (parsed)"]
-        [:td
-         (prn-str
-          (script/parse
-           (bytes->ubytes
-            (:txOut/script txout))))]]))]))
-
+   (for [txout (sort-by :txOut/idx (:txn/txOuts txn))]
+     [:div.panel.panel-default
+      [:div.panel-body {:style "overflow: scroll"}
+       [:table.table.table-condensed
+        [:tr
+         [:td "Value"]
+         [:td (satoshi->btc (:txOut/value txout))]]
+        [:tr
+         [:td "Script"]
+         [:td (render-script (:txOut/script txout))]]]]])))
 
 (defn show-block [blk]
   (html
@@ -232,6 +170,31 @@
          (link-to (url "/blocks/" next-hex)
                   "Next block &rarr;")])
       [:li.next.disabled (link-to "#" "Next block")])]
+
+   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+   ;; I only want to show this on the "homepage"
+   (when (models/genesis-block? blk)
+     [:div.links-of-interest.well
+      [:h4 "Links of interest"]
+      [:ul
+       [:li
+        "Genesis block: "
+        (link-to (url "/blocks/by-idx/0")
+                 "Block 0")]
+       [:li
+        "Latest block: "
+        (let [latest-blk-idx (dec (db/get-block-count))]
+          (link-to (url "/blocks/by-idx/" latest-blk-idx)
+                   "Block " latest-blk-idx))]
+       [:li
+        "First non-coinbase tx: "
+        (link-to (url "/blocks/by-idx/170")
+                 "Block 170, Tx 1")]
+       [:li
+        "First pay-to-pubkey160: "
+        (link-to (url "/txs/6f7cf9580f1c2dfb3c4d5d043cdbb128c640e3f20161245aa7372e9666168516")
+                 "Block 728, Tx 1, Output 0")]]])
 
    ;; Page header ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -260,9 +223,10 @@
     [:tr
      [:td "Time"]
      [:td (str (format-instant (:block/time blk))
-               " ("
-               (-> (:block/time blk) .getTime (/ 1000))
-               " seconds)")]]
+               ;; " ("
+               ;; (-> (:block/time blk) .getTime (/ 1000))
+               ;; " seconds)"
+               )]]
     [:tr
      [:td "Merkle root"]
      [:td (bytes->hex (:block/merkleRoot blk))]]
