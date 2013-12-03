@@ -20,7 +20,6 @@
     BigInt
     IPersistentMap
     IPersistentVector
-    Keyword
     Ratio]
    [org.bouncycastle.crypto
     AsymmetricCipherKeyPair]
