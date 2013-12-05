@@ -2,8 +2,6 @@
   (:require
    [chaingun.util :refer :all]
    [chaingun.db :as db]
-   ;[chaingun.codec :as codec]
-   ;[chaingun.codec2 :as codec2]
    [chaingun.seed :as seed]
    [chaingun.explorer :as explorer])
   (:gen-class))
@@ -24,17 +22,9 @@
   (println "Done.")
   (System/exit 0))
 
-;; (defmethod execute "bench1" [_]
-;;   (seed/seed)
-;;   (System/exit 0))
-
-(defmethod execute "db:import-dat2" [_]
-  ;(codec2/import-dat)
+(defmethod execute "db:import-dat" [_]
   (seed/import-dat)
   (System/exit 0))
-;; (defmethod execute "db:seed00000" [_]
-;;   (codec/seed-db)
-;;   (System/exit 0))
 
 ;; (defmethod execute "demo:seed" [_]
 ;;   (codec/seed-db-demo)
